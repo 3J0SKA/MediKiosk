@@ -132,7 +132,7 @@ export default function Home() {
               )}
             </div>
             <Link
-              href="/patient-intake"
+              href="/patient-login"
               className="rounded-full bg-[#E9A23F] px-5 py-2 text-sm font-semibold text-[#10241F] transition hover:bg-[#C97F28] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#10241F]"
             >
               {t.nav.startIntake}
@@ -153,7 +153,7 @@ export default function Home() {
             <p className="mt-6 max-w-md text-base leading-relaxed text-[#D8E3DC]">{t.hero.sub}</p>
             <div className="mt-8 flex flex-wrap gap-4">
               <Link
-                href="/patient-intake"
+                href="/patient-login"
                 className="rounded-full bg-[#E9A23F] px-6 py-3 text-sm font-semibold text-[#10241F] transition hover:bg-[#C97F28] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#10241F] focus-visible:ring-[#E9A23F]"
               >
                 {t.hero.ctaStart}
