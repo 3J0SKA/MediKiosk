@@ -14,6 +14,7 @@ const CONVERSATION = [
     speaker: "extract",
     label: "Chief complaint",
     value: "Chest pain · Onset: 3 days",
+    flag: undefined,
   },
   {
     speaker: "ai",
