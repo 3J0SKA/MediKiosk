@@ -1,103 +1,146 @@
-import React from 'react';
+"use client";
 
-export default function PhysicianDashboard() {
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+
+export default function PhysicianLogin() {
+  const [step, setStep] = useState<'id' | 'otp'>('id');
+  const [doctorId, setDoctorId] = useState('');
+  const [otp, setOtp] = useState('');
+  const [error, setError] = useState('');
+  const router = useRouter();
+
+  // Demo Doctor ID to match against
+  const DEMO_DOCTOR_ID = "12-345-678";
+
+  const handleIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Keep input clean and capitalize letters if typed
+    setDoctorId(e.target.value.toUpperCase());
+  };
+
+  const handleIdSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Regex matching XX-XXX-XXX format (letters or numbers)
+    const idPattern = /^[A-Z0-9]{2}-[A-Z0-9]{3}-[A-Z0-9]{3}$/;
+
+    if (doctorId.trim() === DEMO_DOCTOR_ID) {
+      setError('');
+      setStep('otp');
+    } else if (!idPattern.test(doctorId.trim())) {
+      setError('Invalid format. Please use format: XX-XXX-XXX (e.g., 12-345-678)');
+    } else {
+      setError(`Doctor ID not found. Use Demo ID: ${DEMO_DOCTOR_ID}`);
+    }
+  };
+
+  const handleOtpSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otp.length === 4) {
+      setError('');
+      router.push('/physician-dashboard');
+    } else {
+      setError('Please enter a 4-digit OTP (e.g., 5555)');
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#0E1411] text-[#E4EAE6] p-6 font-sans">
-      {/* Top Header */}
-      <header className="bg-[#1C2420] border border-[#2D3A34] p-5 rounded-xl shadow-md mb-6 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Physician Clinical Portal</h1>
-          <p className="text-sm text-[#94A39A]">MediKiosk • Live Patient Intake Queue</p>
-        </div>
-        <div className="flex gap-2">
-          <button className="px-3 py-1.5 text-sm rounded-lg bg-[#2F6F63] text-white font-medium hover:bg-[#26594F] transition">
-            All Patients
-          </button>
-          <button className="px-3 py-1.5 text-sm rounded-lg bg-[#141A17] text-[#94A39A] border border-[#2D3A34] hover:bg-[#242F2A] transition">
-            High Priority
-          </button>
-          <button className="px-3 py-1.5 text-sm rounded-lg bg-[#141A17] text-[#94A39A] border border-[#2D3A34] hover:bg-[#242F2A] transition">
-            Medium Priority
-          </button>
-        </div>
-      </header>
-
-      {/* Grid Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div className="min-h-screen bg-[#0E1411] text-[#E4EAE6] flex items-center justify-center p-6 font-sans">
+      <div className="w-full max-w-md bg-[#1C2420] border border-[#2D3A34] p-8 rounded-2xl shadow-xl">
         
-        {/* Left Column: Queue Placeholder */}
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-[#B2C0B8]">Incoming Queue</h2>
-          
-          <div className="p-4 rounded-xl border border-[#2F6F63] bg-[#17221D] cursor-pointer shadow-md">
-            <div className="flex justify-between items-start mb-2">
-              <h3 className="font-bold text-white">Patient Card Placeholder</h3>
-              <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-red-950/80 border border-red-800 text-red-300">
-                High Priority
-              </span>
-            </div>
-            <p className="text-sm text-[#B2C0B8] line-clamp-1">
-              <strong className="text-white">Chief Complaint:</strong> Sample Complaint Text
-            </p>
-            <div className="mt-3 text-xs text-[#7A8C82] flex justify-between border-t border-[#25322C] pt-2">
-              <span>Lang: Hindi</span>
-              <span>Onset: 2 days</span>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-xl border border-[#2D3A34] bg-[#1C2420] cursor-pointer shadow-sm hover:border-[#3E4E46] transition">
-            <div className="flex justify-between items-start mb-2">
-              <h3 className="font-bold text-white">Patient Card Placeholder</h3>
-              <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-amber-950/80 border border-amber-800 text-amber-300">
-                Medium Priority
-              </span>
-            </div>
-            <p className="text-sm text-[#B2C0B8] line-clamp-1">
-              <strong className="text-white">Chief Complaint:</strong> Sample Complaint Text
-            </p>
-            <div className="mt-3 text-xs text-[#7A8C82] flex justify-between border-t border-[#25322C] pt-2">
-              <span>Lang: English</span>
-              <span>Onset: 1 day</span>
-            </div>
-          </div>
+        {/* Header Branding */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-white tracking-tight">
+            Medi<span className="text-[#E9A23F]">Kiosk</span>
+          </h1>
+          <p className="text-sm text-[#94A39A] mt-2">
+            {step === 'id' ? 'Physician Portal Access' : 'Two-Factor Verification'}
+          </p>
         </div>
 
-        {/* Right Column: Details Panel */}
-        <div className="md:col-span-2 bg-[#1C2420] p-6 rounded-xl shadow-md border border-[#2D3A34]">
-          <div className="border-b border-[#2D3A34] pb-4 mb-5 flex justify-between items-center">
+        {/* Step 1: Physician ID Form */}
+        {step === 'id' && (
+          <form onSubmit={handleIdSubmit} className="space-y-5">
             <div>
-              <h2 className="text-2xl font-bold text-white">Patient Details View</h2>
-              <p className="text-sm text-[#94A39A]">ID: #0000 • Age / Gender Info</p>
+              <label className="block text-xs font-bold text-[#7A8C82] uppercase tracking-wider mb-2">
+                Physician License ID (XX-XXX-XXX)
+              </label>
+              <input
+                type="text"
+                value={doctorId}
+                onChange={handleIdChange}
+                placeholder="e.g. 12-345-678"
+                maxLength={10}
+                className="w-full px-4 py-3 rounded-xl bg-[#141A17] border border-[#2D3A34] text-white focus:outline-none focus:border-[#2F6F63] font-mono tracking-wide transition uppercase"
+                required
+              />
             </div>
-            <span className="px-3 py-1 bg-[#25352E] text-[#69D9BD] border border-[#2F6F63]/50 rounded-lg text-sm font-medium">
-              Selected Language
-            </span>
-          </div>
 
-          <div className="space-y-5">
-            <div>
-              <h3 className="text-xs font-bold text-[#7A8C82] uppercase tracking-wider">Chief Complaint</h3>
-              <p className="text-lg text-white font-medium mt-1">
-                Static text for primary symptoms layout display.
+            {error && (
+              <p className="text-sm text-red-400 bg-red-950/50 border border-red-800 p-3 rounded-lg text-center">
+                {error}
               </p>
+            )}
+
+            <button
+              type="submit"
+              className="w-full py-3.5 bg-[#E9A23F] text-black font-semibold rounded-xl hover:bg-[#d49133] transition shadow-md"
+            >
+              Get Authentication OTP
+            </button>
+          </form>
+        )}
+
+        {/* Step 2: Fake OTP Verification Form */}
+        {step === 'otp' && (
+          <form onSubmit={handleOtpSubmit} className="space-y-5">
+            <div className="p-3 bg-[#141A17] border border-[#2D3A34] rounded-lg text-xs text-[#94A39A]">
+              OTP sent to registered mobile linked with ID: <span className="text-white font-mono font-bold">{doctorId}</span>
             </div>
 
             <div>
-              <h3 className="text-xs font-bold text-[#7A8C82] uppercase tracking-wider">AI Intake Clinical Summary</h3>
-              <div className="mt-2 p-4 bg-[#141A17] rounded-lg border border-[#2D3A34] text-[#C4D1C9]">
-                This area will render the summary output once connected to the backend intake model.
-              </div>
+              <label className="block text-xs font-bold text-[#7A8C82] uppercase tracking-wider mb-2">
+                Enter 4-Digit OTP
+              </label>
+              <input
+                type="text"
+                maxLength={4}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                placeholder="e.g. 5555"
+                className="w-full px-4 py-3 text-center text-xl tracking-widest font-mono rounded-xl bg-[#141A17] border border-[#2D3A34] text-white focus:outline-none focus:border-[#2F6F63] transition"
+                required
+              />
             </div>
 
-            <div className="pt-4 flex gap-3 border-t border-[#2D3A34]">
-              <button className="px-5 py-2.5 bg-[#E9A23F] text-black font-semibold rounded-lg hover:bg-[#d49133] transition">
-                Start Consultation
-              </button>
-              <button className="px-5 py-2.5 bg-[#25322C] text-[#E4EAE6] font-medium rounded-lg hover:bg-[#2D3A34] transition">
-                Request Follow-Up
-              </button>
-            </div>
-          </div>
+            {error && (
+              <p className="text-sm text-red-400 bg-red-950/50 border border-red-800 p-3 rounded-lg text-center">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className="w-full py-3.5 bg-[#E9A23F] text-black font-semibold rounded-xl hover:bg-[#d49133] transition shadow-md"
+            >
+              Verify & Enter Dashboard
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setStep('id'); setError(''); }}
+              className="w-full text-xs text-[#7A8C82] hover:text-white transition text-center"
+            >
+              ← Back to ID Login
+            </button>
+          </form>
+        )}
+
+        {/* Demo Credentials Footer */}
+        <div className="mt-6 pt-6 border-t border-[#2D3A34] text-center">
+          <p className="text-xs text-[#7A8C82]">
+            <strong>Demo ID:</strong> <span className="text-[#69D9BD] font-mono font-bold">12-345-678</span> • Any 4-digit OTP works (e.g., <span className="text-[#69D9BD] font-mono font-bold">5555</span>)
+          </p>
         </div>
 
       </div>
