@@ -1,3 +1,6 @@
+--find-links https://download.pytorch.org/whl/cu121
+
+# Existing Dependencies
 Flask==3.0.3
 mysql-connector-python==8.4.0
 python-dotenv==1.0.1
@@ -5,3 +8,15 @@ pytesseract==0.3.10
 Pillow
 Werkzeug==3.0.3
 flask-cors==4.0.1
+
+# TTS & Machine Learning Core
+torch==2.5.1+cu121
+torchaudio==2.5.1+cu121
+transformers
+git+https://github.com/huggingface/parler-tts.git
+soundfile
+
+# Hugging Face Utilities & Fast Downloads
+huggingface_hub
+hf_transfer
+hf_xet

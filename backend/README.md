@@ -153,3 +153,12 @@ medikiosk_backend/
 ├── test_flow.py             # End-to-end smoke test
 └── uploads/                 # Uploaded documents land here
 ```
+## Developer Setup
+
+1. **Accept Model Access:**
+   Visit [ai4bharat/indic-parler-tts](https://huggingface.co/ai4bharat/indic-parler-tts) and accept the terms.
+
+2. **Configure Environment:**
+   Copy `.env.example` to `.env` and insert your Hugging Face access token:
+   ```env
+   HF_TOKEN=hf_xxxx...
