@@ -30,3 +30,7 @@ class Config:
     # ---- Flask ----
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
     DEBUG = os.getenv("FLASK_DEBUG", "1") == "1"
+
+    # ---- Auth ----
+    JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
+    JWT_EXP_HOURS = 12

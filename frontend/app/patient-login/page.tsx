@@ -3,6 +3,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { LANGUAGES, type Lang } from "../translations";
+import { saveSession } from "../../lib/auth";
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
 type Step = "identify" | "otp" | "register" | "success";
 
@@ -109,7 +112,7 @@ export default function PatientLogin() {
   const bodyFont = { fontFamily: FONT[lang] };
   const displayFont = { fontFamily: DISPLAY_FONT[lang] };
 
-  function handleIdentify(e: FormEvent) {
+  async function handleIdentify(e: FormEvent) {
     e.preventDefault();
     setError("");
     const digits = idValue.replace(/\D/g, "");
@@ -117,37 +120,56 @@ export default function PatientLogin() {
       setError(t.errorId);
       return;
     }
-    // MOCK: last digit even = existing patient record found, odd = new patient
-    const lastDigit = parseInt(digits[digits.length - 1], 10);
-    setIsNewPatient(lastDigit % 2 !== 0);
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/request-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aadhaar_id: idValue }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "failed");
+      setIsNewPatient(!data.exists);
       setStep("otp");
-    }, 700);
+    } catch {
+      setError(t.errorId);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function handleOtp(e: FormEvent) {
+  async function handleOtp(e: FormEvent) {
     e.preventDefault();
     setError("");
-    if (otp !== "123456") {
+    if (otp.length !== 6) {
       setError(t.errorOtp);
       return;
     }
+    if (isNewPatient) {
+      // Full OTP + registration is verified together on submit of the register step
+      setStep("register");
+      return;
+    }
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aadhaar_id: idValue, otp }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "failed");
+      saveSession(data.token, data.patient);
+      setPatientName(data.patient.full_name);
+      setStep("success");
+    } catch {
+      setError(t.errorOtp);
+    } finally {
       setLoading(false);
-      if (isNewPatient) {
-        setStep("register");
-      } else {
-        setPatientName("Rajesh Kumar"); // MOCK: pretend we looked this up from ABHA
-        localStorage.setItem("medikiosk-patient", JSON.stringify({ name: "Rajesh Kumar", id: idValue }));
-        setStep("success");
-      }
-    }, 700);
+    }
   }
 
-  function handleRegister(e: FormEvent) {
+  async function handleRegister(e: FormEvent) {
     e.preventDefault();
     setError("");
     if (!fullName.trim() || !dob || !gender || mobile.replace(/\D/g, "").length < 10) {
@@ -155,12 +177,30 @@ export default function PatientLogin() {
       return;
     }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setPatientName(fullName);
-      localStorage.setItem("medikiosk-patient", JSON.stringify({ name: fullName, id: idValue, dob, gender, mobile }));
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          aadhaar_id: idValue,
+          otp,
+          full_name: fullName,
+          dob,
+          gender: gender === "male" ? "M" : gender === "female" ? "F" : "O",
+          phone: mobile,
+          preferred_lang: lang,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "failed");
+      saveSession(data.token, data.patient);
+      setPatientName(data.patient.full_name);
       setStep("success");
-    }, 700);
+    } catch {
+      setError(t.errorOtp);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
