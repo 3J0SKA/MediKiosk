@@ -711,6 +711,44 @@ def generate_summary(session_id):
         (session_id,),
         fetchone=True
     )
+import requests  # make sure this is at the top of app.py
+
+@app.route("/api/ai-summary/<int:session_id>", methods=["POST"])
+@auth_utils.require_auth
+def ai_summary(session_id):
+    """
+    Alternative summary generator using external AI service.
+    """
+
+    session = db.query(
+        "SELECT patient_id FROM history_sessions WHERE session_id=%s",
+        (session_id,),
+        fetchone=True
+    )
+
+    if not session:
+        return jsonify({"error": "session not found"}), 404
+
+    if not auth_utils.owns_patient(session["patient_id"]):
+        return jsonify({"error": "forbidden"}), 403
+
+    # Call external AI API using the key from Config
+    response = requests.post(
+        "https://api.huatuogpt.com/v1/chat",
+        headers={"Authorization": f"Bearer {Config.HUATUO_API_KEY}"},
+        json={"input": f"Summarize session {session_id}"}
+    )
+
+    if response.status_code != 200:
+        return jsonify({"error": "AI service failed"}), 500
+
+    ai_output = response.json()
+
+    return jsonify({
+        "session_id": session_id,
+        "summary_json": ai_output.get("structured"),
+        "summary_text": ai_output.get("text")
+    })
 
     if not session:
         return jsonify({"error": "session not found"}), 404
