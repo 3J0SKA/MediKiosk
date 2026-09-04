@@ -30,6 +30,11 @@ app.config.from_object(Config)
 
 CORS(app)
 
+@app.route("/")
+def index():
+    return "Backend is running!"
+
+
 # Global rate limiting
 # Applies automatically to every route.
 limiter = Limiter(
