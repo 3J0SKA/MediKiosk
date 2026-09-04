@@ -34,3 +34,6 @@ class Config:
     # ---- Auth ----
     JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
     JWT_EXP_HOURS = 12
+
+    # ---- External AI service ----
+    HUATUO_API_KEY = os.getenv("HUATUO_API_KEY", "")
