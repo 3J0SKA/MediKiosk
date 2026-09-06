@@ -37,3 +37,7 @@ class Config:
 
     # ---- External AI service ----
     HUATUO_API_KEY = os.getenv("HUATUO_API_KEY", "")
+
+    # ---- Gemini (document extraction) ----
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
