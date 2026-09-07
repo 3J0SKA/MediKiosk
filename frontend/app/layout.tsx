@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import ChatWidget from "../components/ChatWidget";
 import {
   Fraunces,
   IBM_Plex_Sans,
