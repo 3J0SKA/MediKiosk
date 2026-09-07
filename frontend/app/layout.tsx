@@ -19,17 +19,6 @@ const notoPa = Noto_Sans_Gurmukhi({ subsets: ["gurmukhi"], variable: "--font-pa"
 const notoTa = Noto_Sans_Tamil({ subsets: ["tamil"], variable: "--font-ta", weight: ["400", "500", "600"] });
 const notoBn = Noto_Sans_Bengali({ subsets: ["bengali"], variable: "--font-bn", weight: ["400", "500", "600"] });
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return (
-    <html lang="en">
-      <body /* ...unchanged... */ >
-        {children}
-        <ChatWidget />
-      </body>
-    </html>
-  );
-}
-
 export const metadata: Metadata = {
   title: "MediKiosk — AI Clinical History, Before the Doctor Even Asks",
   description:
@@ -44,6 +33,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         className={`${fraunces.variable} ${plexSans.variable} ${plexMono.variable} ${notoHi.variable} ${notoPa.variable} ${notoTa.variable} ${notoBn.variable} font-[family-name:var(--font-body)] antialiased`}
       >
         {children}
+        <ChatWidget />
       </body>
     </html>
   );
