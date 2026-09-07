@@ -15,7 +15,6 @@ from flask import send_file
 import uuid
 import json as json_lib
 import gemini_service
-import gemini_services
 from datetime import datetime as dt
 
 from flask_limiter import Limiter
@@ -1114,22 +1113,3 @@ if __name__ == "__main__":
         port=5000,
         debug=Config.DEBUG
     )
-
-#MODULE 4 => gemini chat service
-
-@app.route("/api/chat", methods=["POST"])
-@limiter.limit("30 per hour")
-def chat():
-    data = request.get_json(force=True)
-    message = (data.get("message") or "").strip()
-    session_id = data.get("session_id") or str(uuid.uuid4())
-
-    if not message:
-        return jsonify({"error": "message is required"}), 400
-
-    try:
-        reply = gemini_services.get_chat_response(session_id, message)
-    except Exception as e:
-        return jsonify({"error": f"chat service failed: {e}"}), 502
-
-    return jsonify({"session_id": session_id, "reply": reply})
