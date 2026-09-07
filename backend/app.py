@@ -32,7 +32,10 @@ from config import Config
 app = Flask(__name__)
 app.config.from_object(Config)
 
-CORS(app)
+CORS(app, origins=[
+   # "http://localhost:3000",                   # Local development frontend
+    "testing1-meow-dd1f.vercel.app"  # production Vercel URL
+])
 
 @app.route("/")
 def index():
