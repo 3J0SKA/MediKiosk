@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import ChatWidget from "../components/ChatWidget";
 import {
   Fraunces,
   IBM_Plex_Sans,
@@ -17,6 +18,17 @@ const notoHi = Noto_Sans_Devanagari({ subsets: ["devanagari"], variable: "--font
 const notoPa = Noto_Sans_Gurmukhi({ subsets: ["gurmukhi"], variable: "--font-pa", weight: ["400", "500", "600"] });
 const notoTa = Noto_Sans_Tamil({ subsets: ["tamil"], variable: "--font-ta", weight: ["400", "500", "600"] });
 const notoBn = Noto_Sans_Bengali({ subsets: ["bengali"], variable: "--font-bn", weight: ["400", "500", "600"] });
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="en">
+      <body /* ...unchanged... */ >
+        {children}
+        <ChatWidget />
+      </body>
+    </html>
+  );
+}
 
 export const metadata: Metadata = {
   title: "MediKiosk — AI Clinical History, Before the Doctor Even Asks",
