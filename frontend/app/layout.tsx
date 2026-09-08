@@ -32,7 +32,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         className={`${fraunces.variable} ${plexSans.variable} ${plexMono.variable} ${notoHi.variable} ${notoPa.variable} ${notoTa.variable} ${notoBn.variable} font-[family-name:var(--font-body)] antialiased`}
       >
         {children}
-        <ChatWidget />
       </body>
     </html>
   );
