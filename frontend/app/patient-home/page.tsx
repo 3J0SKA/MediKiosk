@@ -5,6 +5,7 @@ import Link from "next/link";
 import { LANGUAGES, type Lang } from "../translations";
 import { speak, stopSpeaking } from "../../lib/tts";
 import { useRequireAuth } from "../../lib/useRequireAuth";
+import IdleWarningModal from "../../components/IdleWarningModal";
 
 // ---------- Tour targets ----------
 type TourTarget = "intro" | "emergency" | "consent" | "department" | "interview" | "upload";
@@ -20,7 +21,7 @@ const PT: Record<Lang, {
   deptTitle: string; deptGeneral: string; deptGeneralDesc: string; deptAyush: string; deptAyushDesc: string;
   interviewTitle: string; interviewDesc: string; interviewCta: string;
   uploadTitle: string; uploadDesc: string; uploadCta: string;
-  footer: string; audioTourBtn: string;
+  footer: string; audioTourBtn: string; logoutBtn: string;
   tourPromptTitle: string; tourPromptBody: string; tourYes: string; tourNo: string;
   tourPrev: string; tourNext: string; tourEnd: string;
   tourSteps: string[];
@@ -39,7 +40,7 @@ const PT: Record<Lang, {
     uploadTitle: "Upload old documents", uploadDesc: "Prescriptions, lab reports, or discharge summaries.",
     uploadCta: "Upload →",
     footer: "Your data is linked to your ABHA record and cleared from this kiosk after your visit.",
-    audioTourBtn: "🔊 Audio tour",
+    audioTourBtn: "🔊 Audio tour", logoutBtn: "Log out",
     tourPromptTitle: "Would you like an audio guide?", tourPromptBody: "We can walk you through this page with voice narration and highlights.",
     tourYes: "Yes, guide me", tourNo: "No, thanks", tourPrev: "◀ Back", tourNext: "Next ▶", tourEnd: "End tour",
     tourSteps: [
@@ -65,7 +66,7 @@ const PT: Record<Lang, {
     uploadTitle: "पुराने दस्तावेज़ अपलोड करें", uploadDesc: "पर्चे, लैब रिपोर्ट, या डिस्चार्ज सारांश।",
     uploadCta: "अपलोड करें →",
     footer: "आपका डेटा आपके ABHA रिकॉर्ड से जुड़ा है और यात्रा के बाद इस कियोस्क से हटा दिया जाता है।",
-    audioTourBtn: "🔊 ऑडियो टूर",
+    audioTourBtn: "🔊 ऑडियो टूर", logoutBtn: "लॉग आउट",
     tourPromptTitle: "क्या आप ऑडियो गाइड चाहेंगे?", tourPromptBody: "हम आवाज़ और हाइलाइट के साथ इस पेज को समझा सकते हैं।",
     tourYes: "हां, गाइड करें", tourNo: "नहीं, धन्यवाद", tourPrev: "◀ पीछे", tourNext: "आगे ▶", tourEnd: "टूर समाप्त करें",
     tourSteps: [
@@ -91,7 +92,7 @@ const PT: Record<Lang, {
     uploadTitle: "ਪੁਰਾਣੇ ਦਸਤਾਵੇਜ਼ ਅੱਪਲੋਡ ਕਰੋ", uploadDesc: "ਨੁਸਖੇ, ਲੈਬ ਰਿਪੋਰਟਾਂ, ਜਾਂ ਡਿਸਚਾਰਜ ਸਾਰ।",
     uploadCta: "ਅੱਪਲੋਡ ਕਰੋ →",
     footer: "ਤੁਹਾਡਾ ਡਾਟਾ ਤੁਹਾਡੇ ABHA ਰਿਕਾਰਡ ਨਾਲ ਜੁੜਿਆ ਹੈ ਅਤੇ ਫੇਰੀ ਤੋਂ ਬਾਅਦ ਇਸ ਕਿਓਸਕ ਤੋਂ ਹਟਾ ਦਿੱਤਾ ਜਾਂਦਾ ਹੈ।",
-    audioTourBtn: "🔊 ਆਡੀਓ ਟੂਰ",
+    audioTourBtn: "🔊 ਆਡੀਓ ਟੂਰ", logoutBtn: "ਲਾਗਆਉਟ",
     tourPromptTitle: "ਕੀ ਤੁਸੀਂ ਆਡੀਓ ਗਾਈਡ ਚਾਹੋਗੇ?", tourPromptBody: "ਅਸੀਂ ਆਵਾਜ਼ ਅਤੇ ਹਾਈਲਾਈਟ ਨਾਲ ਇਹ ਪੇਜ ਸਮਝਾ ਸਕਦੇ ਹਾਂ।",
     tourYes: "ਹਾਂ, ਗਾਈਡ ਕਰੋ", tourNo: "ਨਹੀਂ, ਧੰਨਵਾਦ", tourPrev: "◀ ਪਿੱਛੇ", tourNext: "ਅੱਗੇ ▶", tourEnd: "ਟੂਰ ਖਤਮ ਕਰੋ",
     tourSteps: [
@@ -117,7 +118,7 @@ const PT: Record<Lang, {
     uploadTitle: "பழைய ஆவணங்களைப் பதிவேற்றவும்", uploadDesc: "மருந்துச் சீட்டுகள், லேப் அறிக்கைகள், அல்லது டிஸ்சார்ஜ் சுருக்கங்கள்.",
     uploadCta: "பதிவேற்று →",
     footer: "உங்கள் தரவு உங்கள் ABHA பதிவுடன் இணைக்கப்பட்டுள்ளது, வருகைக்குப் பிறகு இந்த கியோஸ்கிலிருந்து அழிக்கப்படும்.",
-    audioTourBtn: "🔊 ஆடியோ சுற்றுலா",
+    audioTourBtn: "🔊 ஆடியோ சுற்றுலா", logoutBtn: "வெளியேறு",
     tourPromptTitle: "நீங்கள் ஆடியோ வழிகாட்டி விரும்புகிறீர்களா?", tourPromptBody: "குரல் விளக்கம் மற்றும் சிறப்பம்சத்துடன் இந்தப் பக்கத்தை நாங்கள் விளக்கலாம்.",
     tourYes: "ஆம், வழிகாட்டவும்", tourNo: "வேண்டாம், நன்றி", tourPrev: "◀ பின்", tourNext: "அடுத்து ▶", tourEnd: "சுற்றுலா முடிக்கவும்",
     tourSteps: [
@@ -143,7 +144,7 @@ const PT: Record<Lang, {
     uploadTitle: "পুরনো নথি আপলোড করুন", uploadDesc: "প্রেসক্রিপশন, ল্যাব রিপোর্ট, বা ডিসচার্জ সারসংক্ষেপ।",
     uploadCta: "আপলোড করুন →",
     footer: "আপনার তথ্য আপনার ABHA রেকর্ডের সাথে যুক্ত এবং ভিজিটের পরে এই কিয়স্ক থেকে মুছে ফেলা হয়।",
-    audioTourBtn: "🔊 অডিও ট্যুর",
+    audioTourBtn: "🔊 অডিও ট্যুর", logoutBtn: "লগআউট",
     tourPromptTitle: "আপনি কি অডিও গাইড চান?", tourPromptBody: "আমরা কণ্ঠস্বর ও হাইলাইট দিয়ে এই পাতাটি বুঝিয়ে দিতে পারি।",
     tourYes: "হ্যাঁ, গাইড করুন", tourNo: "না, ধন্যবাদ", tourPrev: "◀ পিছনে", tourNext: "পরবর্তী ▶", tourEnd: "ট্যুর শেষ করুন",
     tourSteps: [
@@ -161,7 +162,7 @@ const FONT: Record<Lang, string> = { en: "var(--font-body)", hi: "var(--font-hi)
 const DISPLAY_FONT: Record<Lang, string> = { en: "var(--font-display)", hi: "var(--font-hi)", pa: "var(--font-pa)", ta: "var(--font-ta)", bn: "var(--font-bn)" };
 
 export default function PatientHome() {
-  const { patient, ready } = useRequireAuth();
+  const { patient, ready, logout, idleWarningVisible, secondsLeft, stayLoggedIn } = useRequireAuth();
 
   const [lang, setLang] = useState<Lang>("en");
   const [consented, setConsented] = useState(false);
@@ -196,8 +197,6 @@ export default function PatientHome() {
     const savedLang = localStorage.getItem("medikiosk-lang") as Lang | null;
     if (savedLang) setLang(savedLang);
     if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.getVoices();
-
-    // Only auto-prompt once per login session
     const dismissed = localStorage.getItem(TOUR_DISMISSED_KEY);
     if (!dismissed) setTourPromptOpen(true);
   }, []);
@@ -300,16 +299,24 @@ export default function PatientHome() {
       </div>
 
       <div className="mx-auto max-w-3xl px-6 py-10">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <p style={displayFont} className="text-xl font-semibold">
             Medi<span className="text-[#E9A23F]">Kiosk</span>
           </p>
-          <button
-            onClick={startTour}
-            className="rounded-full border border-[#2F6F63]/40 px-3 py-1.5 text-xs font-medium text-[#2F6F63] hover:bg-[#2F6F63]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F6F63]"
-          >
-            {t.audioTourBtn}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={startTour}
+              className="rounded-full border border-[#2F6F63]/40 px-3 py-1.5 text-xs font-medium text-[#2F6F63] hover:bg-[#2F6F63]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F6F63]"
+            >
+              {t.audioTourBtn}
+            </button>
+            <button
+              onClick={logout}
+              className="rounded-full border border-[#1C2420]/20 px-3 py-1.5 text-xs font-medium text-[#1C2420]/70 hover:bg-[#1C2420]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1C2420]/30"
+            >
+              {t.logoutBtn}
+            </button>
+          </div>
         </div>
         <h1 style={displayFont} className="mt-6 text-3xl font-medium">
           {t.greeting}, {patient?.full_name}
@@ -498,6 +505,10 @@ export default function PatientHome() {
             </div>
           </div>
         </div>
+      )}
+
+      {idleWarningVisible && (
+        <IdleWarningModal lang={lang} secondsLeft={secondsLeft} onStay={stayLoggedIn} onLogout={logout} />
       )}
 
       <style jsx global>{`

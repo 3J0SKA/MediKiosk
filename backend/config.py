@@ -34,3 +34,10 @@ class Config:
     # ---- Auth ----
     JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
     JWT_EXP_HOURS = 12
+
+    # ---- External AI service ----
+    HUATUO_API_KEY = os.getenv("HUATUO_API_KEY", "")
+
+    # ---- Gemini (document extraction) ----
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")

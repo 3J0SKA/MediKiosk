@@ -13,6 +13,9 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from flask import send_file
 import uuid
+import json as json_lib
+import gemini_service
+from datetime import datetime as dt
 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -30,6 +33,11 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 CORS(app)
+
+@app.route("/")
+def index():
+    return "Backend is running!"
+
 
 # Global rate limiting
 # Applies automatically to every route.
@@ -608,6 +616,82 @@ def upload_document():
         "extracted_entities": entities,
     }), 201
 
+@app.route("/api/documents/patient/<int:patient_id>/summarize-all", methods=["POST"])
+@auth_utils.require_auth
+@limiter.limit("5 per hour")
+def summarize_all_documents(patient_id):
+    """
+    Runs Gemini extraction across every document for this patient in one go.
+    Cached per-document — only documents without an existing ai_extractions
+    row (or when ?force=true) actually consume new Gemini tokens.
+    """
+    if not auth_utils.owns_patient(patient_id):
+        return jsonify({"error": "forbidden"}), 403
+
+    force = request.args.get("force", "false").lower() == "true"
+
+    docs = db.query(
+        "SELECT * FROM documents WHERE patient_id=%s ORDER BY uploaded_at DESC",
+        (patient_id,),
+    )
+
+    results = []
+    for doc in docs:
+        document_id = doc["document_id"]
+        entry = {"document_id": document_id, "doc_type": doc["doc_type"]}
+
+        if not force:
+            cached = db.query(
+                "SELECT * FROM ai_extractions WHERE document_id=%s", (document_id,), fetchone=True
+            )
+            if cached:
+                entry.update({
+                    "cached": True,
+                    "result": json_lib.loads(cached["result_json"]),
+                    "needs_review": bool(cached["needs_review"]),
+                })
+                results.append(entry)
+                continue
+
+        if not os.path.exists(doc["file_path"]):
+            entry.update({"error": "file missing on server"})
+            results.append(entry)
+            continue
+
+        try:
+            result = gemini_service.extract_from_document(doc["file_path"], doc["doc_type"])
+            needs_review = bool(result.get("needs_review", False))
+            db.execute(
+                """
+                INSERT INTO ai_extractions (document_id, model_used, result_json, needs_review)
+                VALUES (%s,%s,%s,%s)
+                ON DUPLICATE KEY UPDATE
+                    model_used=VALUES(model_used),
+                    result_json=VALUES(result_json),
+                    needs_review=VALUES(needs_review),
+                    created_at=CURRENT_TIMESTAMP
+                """,
+                (document_id, Config.GEMINI_MODEL, json_lib.dumps(result), needs_review),
+            )
+            extracted_date = result.get("date")
+            if extracted_date:
+                for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
+                    try:
+                        parsed = dt.strptime(extracted_date, fmt).date()
+                        db.execute(
+                            "UPDATE documents SET document_date=%s WHERE document_id=%s",
+                            (parsed, document_id),
+                        )
+                        break
+                    except ValueError:
+                        continue
+            entry.update({"cached": False, "result": result, "needs_review": needs_review})
+        except RuntimeError as e:
+            entry.update({"error": str(e)})
+
+        results.append(entry)
+
+    return jsonify({"results": results})
 
 @app.route("/api/documents/patient/<int:patient_id>", methods=["GET"])
 @auth_utils.require_auth
@@ -627,6 +711,161 @@ def list_patient_documents(patient_id):
     )
 
     return jsonify(docs)
+
+@app.route("/api/documents/patient/<int:patient_id>/combined-summary", methods=["GET"])
+@auth_utils.require_auth
+def combined_document_summary(patient_id):
+    """
+    Aggregates every already-summarised document into one chronological
+    view: abnormal lab values surfaced separately, all medications pooled
+    across prescriptions/discharge summaries, and a basic interaction
+    flag. Uses ONLY cached ai_extractions — never calls Gemini itself.
+    """
+    if not auth_utils.owns_patient(patient_id):
+        return jsonify({"error": "forbidden"}), 403
+
+    rows = db.query(
+        """
+        SELECT d.document_id, d.doc_type, d.document_date, d.uploaded_at,
+               e.result_json, e.needs_review
+        FROM documents d
+        LEFT JOIN ai_extractions e ON e.document_id = d.document_id
+        WHERE d.patient_id=%s
+        ORDER BY COALESCE(d.document_date, d.uploaded_at) ASC
+        """,
+        (patient_id,),
+    )
+
+    timeline = []
+    abnormal_tests = []
+    all_medications = []
+    any_needs_review = False
+
+    for row in rows:
+        entry = {
+            "document_id": row["document_id"],
+            "doc_type": row["doc_type"],
+            "document_date": row["document_date"].isoformat() if row["document_date"] else None,
+            "uploaded_at": row["uploaded_at"].isoformat() if row["uploaded_at"] else None,
+            "summarised": row["result_json"] is not None,
+            "needs_review": bool(row["needs_review"]) if row["needs_review"] is not None else False,
+            "result": json_lib.loads(row["result_json"]) if row["result_json"] else None,
+        }
+        timeline.append(entry)
+
+        if entry["needs_review"]:
+            any_needs_review = True
+
+        if entry["result"]:
+            for test in entry["result"].get("tests", []) or []:
+                if test.get("is_abnormal"):
+                    abnormal_tests.append({**test, "document_id": row["document_id"], "date": entry["document_date"]})
+
+            for med in entry["result"].get("medications", []) or []:
+                all_medications.append({**med, "document_id": row["document_id"], "source": "prescription"})
+
+            for med_name in entry["result"].get("medications_on_discharge", []) or []:
+                all_medications.append({"name": med_name, "document_id": row["document_id"], "source": "discharge_summary"})
+
+    unique_med_names = {m["name"].strip().lower() for m in all_medications if m.get("name")}
+    interaction_note = None
+    if len(unique_med_names) >= 2:
+        interaction_note = (
+            "Multiple medications found across documents — a physician should review for "
+            "potential drug interactions. (This is a basic count-based flag, not a real "
+            "interaction check.)"
+        )
+
+    return jsonify({
+        "timeline": timeline,
+        "abnormal_tests": abnormal_tests,
+        "all_medications": all_medications,
+        "interaction_note": interaction_note,
+        "any_needs_review": any_needs_review,
+        "total_documents": len(rows),
+        "summarised_count": sum(1 for r in timeline if r["summarised"]),
+    })
+
+
+@app.route("/api/documents/patient/<int:patient_id>/clear-all", methods=["DELETE"])
+@auth_utils.require_auth
+def clear_all_documents(patient_id):
+    """
+    DPDP/consent-aligned 'clear my data' action — deletes every uploaded
+    document (and their extractions, files on disk) for this patient.
+    """
+    if not auth_utils.owns_patient(patient_id):
+        return jsonify({"error": "forbidden"}), 403
+
+    docs = db.query("SELECT document_id, file_path FROM documents WHERE patient_id=%s", (patient_id,))
+    for doc in docs:
+        if os.path.exists(doc["file_path"]):
+            try:
+                os.remove(doc["file_path"])
+            except OSError:
+                pass
+
+    db.execute(
+        "DELETE FROM extracted_entities WHERE document_id IN (SELECT document_id FROM documents WHERE patient_id=%s)",
+        (patient_id,),
+    )
+    db.execute("DELETE FROM ai_extractions WHERE document_id IN (SELECT document_id FROM documents WHERE patient_id=%s)", (patient_id,))
+    db.execute("DELETE FROM documents WHERE patient_id=%s", (patient_id,))
+
+    return jsonify({"status": "cleared", "deleted_count": len(docs)})
+
+@app.route("/api/documents/<int:document_id>/summarize", methods=["POST"])
+@auth_utils.require_auth
+@limiter.limit("15 per hour")
+def summarize_document(document_id):
+    """
+    On-demand Gemini extraction, button-triggered from the frontend.
+    Cached in ai_extractions — repeat calls return the cached result
+    UNLESS ?force=true is passed, to conserve free-tier API usage.
+    """
+    doc = db.query("SELECT * FROM documents WHERE document_id=%s", (document_id,), fetchone=True)
+    if not doc:
+        return jsonify({"error": "not found"}), 404
+    if not auth_utils.owns_patient(doc["patient_id"]):
+        return jsonify({"error": "forbidden"}), 403
+
+    force = request.args.get("force", "false").lower() == "true"
+
+    if not force:
+        cached = db.query(
+            "SELECT * FROM ai_extractions WHERE document_id=%s", (document_id,), fetchone=True
+        )
+        if cached:
+            return jsonify({
+                "cached": True,
+                "result": json_lib.loads(cached["result_json"]),
+                "needs_review": bool(cached["needs_review"]),
+            })
+
+    if not os.path.exists(doc["file_path"]):
+        return jsonify({"error": "file missing on server"}), 404
+
+    try:
+        result = gemini_service.extract_from_document(doc["file_path"], doc["doc_type"])
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
+
+    needs_review = bool(result.get("needs_review", False))
+
+    db.execute(
+        """
+        INSERT INTO ai_extractions (document_id, model_used, result_json, needs_review)
+        VALUES (%s,%s,%s,%s)
+        ON DUPLICATE KEY UPDATE
+            model_used=VALUES(model_used),
+            result_json=VALUES(result_json),
+            needs_review=VALUES(needs_review),
+            created_at=CURRENT_TIMESTAMP
+        """,
+        (document_id, Config.GEMINI_MODEL, json_lib.dumps(result), needs_review),
+    )
+
+    return jsonify({"cached": False, "result": result, "needs_review": needs_review})
 
 
 @app.route("/api/documents/<int:document_id>/file", methods=["GET"])
@@ -707,6 +946,44 @@ def generate_summary(session_id):
         (session_id,),
         fetchone=True
     )
+import requests  # make sure this is at the top of app.py
+
+@app.route("/api/ai-summary/<int:session_id>", methods=["POST"])
+@auth_utils.require_auth
+def ai_summary(session_id):
+    """
+    Alternative summary generator using external AI service.
+    """
+
+    session = db.query(
+        "SELECT patient_id FROM history_sessions WHERE session_id=%s",
+        (session_id,),
+        fetchone=True
+    )
+
+    if not session:
+        return jsonify({"error": "session not found"}), 404
+
+    if not auth_utils.owns_patient(session["patient_id"]):
+        return jsonify({"error": "forbidden"}), 403
+
+    # Call external AI API using the key from Config
+    response = requests.post(
+        "https://api.huatuogpt.com/v1/chat",
+        headers={"Authorization": f"Bearer {Config.HUATUO_API_KEY}"},
+        json={"input": f"Summarize session {session_id}"}
+    )
+
+    if response.status_code != 200:
+        return jsonify({"error": "AI service failed"}), 500
+
+    ai_output = response.json()
+
+    return jsonify({
+        "session_id": session_id,
+        "summary_json": ai_output.get("structured"),
+        "summary_text": ai_output.get("text")
+    })
 
     if not session:
         return jsonify({"error": "session not found"}), 404
