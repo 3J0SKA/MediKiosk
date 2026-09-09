@@ -1,26 +1,34 @@
 """
 MediKiosk Backend - Main Flask Application
 
-Run with:  python app.py
-
+Run with: python app.py
 API base: http://localhost:5000/api
 """
 
 import os
+import io
+import time
+import uuid
+import base64
 import datetime
-from flask import Flask, request, jsonify, g
+import warnings
+import json as json_lib
+from datetime import datetime as dt
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
+import torch
+import soundfile as sf
+from flask import Flask, request, jsonify, g, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-from flask import send_file
-import uuid
-import json as json_lib
-import gemini_service
-from datetime import datetime as dt
-
+from dotenv import load_dotenv
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+import google.generativeai as genai
 
-import gemini_services
+# Local modules
+import gemini_service
 import db
 import history_engine
 import ocr_module
@@ -28,19 +36,41 @@ import summary_generator
 import auth_utils
 from config import Config
 
+warnings.filterwarnings("ignore")
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+load_dotenv()
 
 app = Flask(__name__)
 app.config.from_object(Config)
-
 CORS(app)
+
+api_key = os.getenv("GEMINI_API_KEY")
+if api_key:
+    genai.configure(api_key=api_key)
+
+def generate_fast_audio(text: str, lang: str = "en") -> str:
+    """Generates audio 100% in RAM with zero disk I/O."""
+    if not text.strip():
+        text = "Please tell me more about your symptoms."
+
+    supported_langs = ["en", "hi", "pa", "ta", "bn"]
+    gtts_lang = lang if lang in supported_langs else "en"
+
+    try:
+        my_tts = gTTS(text=text, lang=gtts_lang, slow=False)
+        audio_buffer = io.BytesIO()
+        my_tts.write_to_fp(audio_buffer)
+        audio_buffer.seek(0)
+        return base64.b64encode(audio_buffer.read()).decode("utf-8")
+    except Exception as e:
+        print(f"TTS Generation Error: {e}")
+        return ""
 
 @app.route("/")
 def index():
     return "Backend is running!"
 
-
 # Global rate limiting
-# Applies automatically to every route.
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
@@ -48,16 +78,12 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 
-
 os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
-
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in Config.ALLOWED_EXTENSIONS
 
-
-# Real file-content signatures — checked in addition to the extension,
-# so a renamed .exe can't slip through just because it's named "scan.jpg"
+# Real file-content signatures
 FILE_SIGNATURES = {
     "png": [b"\x89PNG\r\n\x1a\n"],
     "jpg": [b"\xff\xd8\xff"],
@@ -65,22 +91,15 @@ FILE_SIGNATURES = {
     "pdf": [b"%PDF-"],
 }
 
-
 def verify_file_signature(file_stream, extension: str) -> bool:
-    """Reads the first bytes of the upload and checks them against the
-    real signature for the claimed extension. Resets the stream after."""
     signatures = FILE_SIGNATURES.get(extension)
-
     if not signatures:
         return False
-
     header = file_stream.read(8)
     file_stream.seek(0)
-
     return any(header.startswith(sig) for sig in signatures)
 
-
-MAX_DOCUMENTS_PER_PATIENT = 30  # sane cap so one patient can't fill the disk
+MAX_DOCUMENTS_PER_PATIENT = 30
 
 
 # =====================================================================
@@ -90,12 +109,6 @@ MAX_DOCUMENTS_PER_PATIENT = 30  # sane cap so one patient can't fill the disk
 @app.route("/api/auth/request-otp", methods=["POST"])
 @limiter.limit("5 per minute")
 def request_otp():
-    """
-    Step 1 of login. Body JSON: { aadhaar_id }
-    MOCK: always "sends" OTP 123456 — no real SMS is triggered.
-    Tells the frontend whether this ID belongs to a returning patient.
-    """
-
     data = request.get_json(force=True)
     aadhaar_id = (data.get("aadhaar_id") or "").strip()
 
@@ -107,25 +120,13 @@ def request_otp():
         (aadhaar_id,),
         fetchone=True
     )
-
     print(f"[MOCK OTP] Sending OTP 123456 to ID {aadhaar_id}")
-
     return jsonify({"exists": existing is not None})
 
 
 @app.route("/api/auth/verify-otp", methods=["POST"])
 @limiter.limit("5 per minute")
 def verify_otp():
-    """
-    Step 2 of login. Body JSON:
-      { aadhaar_id, otp, full_name?, dob?, gender?, phone?, preferred_lang? }
-
-    full_name/dob/gender/phone are required only for a brand-new patient
-    (registration happens inline with first-time verification).
-
-    Returns: { status, token, patient }
-    """
-
     data = request.get_json(force=True)
     aadhaar_id = (data.get("aadhaar_id") or "").strip()
     otp = (data.get("otp") or "").strip()
@@ -141,34 +142,22 @@ def verify_otp():
 
     if existing:
         token = auth_utils.generate_token(existing["patient_id"], aadhaar_id)
-
         return jsonify({
             "status": "existing_patient",
             "token": token,
             "patient": existing
         })
 
-    # New patient — registration fields required now
     full_name = data.get("full_name")
-
     if not full_name:
         return jsonify({"error": "full_name is required for new patients"}), 400
 
     age = None
-
     if data.get("dob"):
         try:
-            dob = datetime.datetime.strptime(
-                data["dob"],
-                "%Y-%m-%d"
-            ).date()
-
+            dob = datetime.datetime.strptime(data["dob"], "%Y-%m-%d").date()
             today = datetime.date.today()
-
-            age = today.year - dob.year - (
-                (today.month, today.day) < (dob.month, dob.day)
-            )
-
+            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
         except ValueError:
             pass
 
@@ -177,29 +166,13 @@ def verify_otp():
         INSERT INTO patients (abha_id, full_name, age, gender, phone, preferred_lang)
         VALUES (%s,%s,%s,%s,%s,%s)
         """,
-        (
-            aadhaar_id,
-            full_name,
-            age,
-            data.get("gender", "O"),
-            data.get("phone"),
-            data.get("preferred_lang", "en"),
-        ),
+        (aadhaar_id, full_name, age, data.get("gender", "O"), data.get("phone"), data.get("preferred_lang", "en")),
     )
-
-    patient = db.query(
-        "SELECT * FROM patients WHERE patient_id=%s",
-        (patient_id,),
-        fetchone=True
-    )
-
+    
+    patient = db.query("SELECT * FROM patients WHERE patient_id=%s", (patient_id,), fetchone=True)
     token = auth_utils.generate_token(patient_id, aadhaar_id)
 
-    return jsonify({
-        "status": "created",
-        "token": token,
-        "patient": patient
-    }), 201
+    return jsonify({"status": "created", "token": token, "patient": patient}), 201
 
 
 # =====================================================================
@@ -208,24 +181,6 @@ def verify_otp():
 
 @app.route("/api/patients/register", methods=["POST"])
 def register_patient():
-    """
-    LEGACY/DIRECT registration route — kept for backward compatibility and
-    direct testing. Normal login now goes through /api/auth/verify-otp,
-    which registers new patients inline as part of OTP verification.
-
-    Body JSON:
-    {
-        abha_id,
-        full_name,
-        age,
-        gender,
-        phone,
-        preferred_lang,
-        department,
-        consent_given
-    }
-    """
-
     data = request.get_json(force=True)
 
     if data.get("abha_id"):
@@ -234,52 +189,26 @@ def register_patient():
             (data["abha_id"],),
             fetchone=True
         )
-
         if existing:
-            return jsonify({
-                "status": "existing_patient",
-                "patient": existing
-            }), 200
+            return jsonify({"status": "existing_patient", "patient": existing}), 200
 
     if not data.get("full_name"):
         return jsonify({"error": "full_name is required"}), 400
 
-    consent_time = (
-        datetime.datetime.now()
-        if data.get("consent_given")
-        else None
-    )
+    consent_time = datetime.datetime.now() if data.get("consent_given") else None
 
     patient_id = db.execute(
         """
         INSERT INTO patients
-            (abha_id, full_name, age, gender, phone, preferred_lang,
-             department, consent_given, consent_time)
+            (abha_id, full_name, age, gender, phone, preferred_lang, department, consent_given, consent_time)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
-        (
-            data.get("abha_id"),
-            data["full_name"],
-            data.get("age"),
-            data.get("gender", "O"),
-            data.get("phone"),
-            data.get("preferred_lang", "en"),
-            data.get("department"),
-            bool(data.get("consent_given", False)),
-            consent_time,
-        ),
+        (data.get("abha_id"), data["full_name"], data.get("age"), data.get("gender", "O"), data.get("phone"), 
+         data.get("preferred_lang", "en"), data.get("department"), bool(data.get("consent_given", False)), consent_time),
     )
 
-    patient = db.query(
-        "SELECT * FROM patients WHERE patient_id=%s",
-        (patient_id,),
-        fetchone=True
-    )
-
-    return jsonify({
-        "status": "created",
-        "patient": patient
-    }), 201
+    patient = db.query("SELECT * FROM patients WHERE patient_id=%s", (patient_id,), fetchone=True)
+    return jsonify({"status": "created", "patient": patient}), 201
 
 
 @app.route("/api/patients/<int:patient_id>", methods=["GET"])
@@ -288,12 +217,7 @@ def get_patient(patient_id):
     if not auth_utils.owns_patient(patient_id):
         return jsonify({"error": "forbidden"}), 403
 
-    patient = db.query(
-        "SELECT * FROM patients WHERE patient_id=%s",
-        (patient_id,),
-        fetchone=True
-    )
-
+    patient = db.query("SELECT * FROM patients WHERE patient_id=%s", (patient_id,), fetchone=True)
     if not patient:
         return jsonify({"error": "not found"}), 404
 
@@ -307,176 +231,82 @@ def get_patient(patient_id):
 @app.route("/api/history/start", methods=["POST"])
 @auth_utils.require_auth
 def start_history_session():
-    """
-    Step 2 - Converse (start). Creates a new history session for a patient visit.
-
-    Body JSON:
-    {
-        patient_id,
-        chief_complaint,
-        mode: 'allopathic'|'ayush'
-    }
-    """
-
     data = request.get_json(force=True)
-
     patient_id = data.get("patient_id")
     chief_complaint = data.get("chief_complaint", "")
     mode = data.get("mode", "allopathic")
 
     if not patient_id:
         return jsonify({"error": "patient_id is required"}), 400
-
     if not auth_utils.owns_patient(patient_id):
         return jsonify({"error": "forbidden"}), 403
 
     session_id = db.execute(
-        """
-        INSERT INTO history_sessions
-            (patient_id, chief_complaint, mode)
-        VALUES (%s,%s,%s)
-        """,
+        "INSERT INTO history_sessions (patient_id, chief_complaint, mode) VALUES (%s,%s,%s)",
         (patient_id, chief_complaint, mode),
     )
-
     category, question = history_engine.get_next_question(set(), mode)
 
     return jsonify({
         "session_id": session_id,
         "mode": mode,
-        "next_question": (
-            {"category": category, **question}
-            if question else None
-        ),
+        "next_question": ({"category": category, **question} if question else None),
     }), 201
 
 
 @app.route("/api/history/answer", methods=["POST"])
 @auth_utils.require_auth
 def submit_answer():
-    """
-    Records one answer and returns the next adaptive question
-    (or completion signal).
-
-    Body JSON:
-    {
-        session_id,
-        category,
-        question_code,
-        question_text,
-        answer_text,
-        input_mode
-    }
-    """
-
     data = request.get_json(force=True)
-
     session_id = data.get("session_id")
 
     if not session_id:
         return jsonify({"error": "session_id is required"}), 400
 
-    session = db.query(
-        "SELECT * FROM history_sessions WHERE session_id=%s",
-        (session_id,),
-        fetchone=True
-    )
-
+    session = db.query("SELECT * FROM history_sessions WHERE session_id=%s", (session_id,), fetchone=True)
     if not session:
         return jsonify({"error": "session not found"}), 404
-
     if not auth_utils.owns_patient(session["patient_id"]):
         return jsonify({"error": "forbidden"}), 403
 
-    is_flag = history_engine.check_red_flag(
-        session["chief_complaint"],
-        data.get("answer_text", "")
-    )
+    is_flag = history_engine.check_red_flag(session["chief_complaint"], data.get("answer_text", ""))
 
     db.execute(
         """
         INSERT INTO history_qa
-            (session_id, category, question_code, question_text,
-             answer_text, input_mode, is_red_flag)
+            (session_id, category, question_code, question_text, answer_text, input_mode, is_red_flag)
         VALUES (%s,%s,%s,%s,%s,%s,%s)
         """,
-        (
-            session_id,
-            data.get("category"),
-            data.get("question_code"),
-            data.get("question_text"),
-            data.get("answer_text"),
-            data.get("input_mode", "touch"),
-            is_flag,
-        ),
+        (session_id, data.get("category"), data.get("question_code"), data.get("question_text"),
+         data.get("answer_text"), data.get("input_mode", "touch"), is_flag),
     )
 
     if is_flag:
-        db.execute(
-            """
-            UPDATE history_sessions
-            SET status='flagged_emergency'
-            WHERE session_id=%s
-            """,
-            (session_id,),
-        )
+        db.execute("UPDATE history_sessions SET status='flagged_emergency' WHERE session_id=%s", (session_id,))
 
-    answered_rows = db.query(
-        "SELECT question_code FROM history_qa WHERE session_id=%s",
-        (session_id,)
-    )
+    answered_rows = db.query("SELECT question_code FROM history_qa WHERE session_id=%s", (session_id,))
+    answered_codes = {r["question_code"] for r in answered_rows}
+    category, question = history_engine.get_next_question(answered_codes, session["mode"])
 
-    answered_codes = {
-        r["question_code"]
-        for r in answered_rows
-    }
-
-    category, question = history_engine.get_next_question(
-        answered_codes,
-        session["mode"]
-    )
-
-    response = {
+    return jsonify({
         "recorded": True,
         "red_flag_triggered": is_flag,
-        "next_question": (
-            {"category": category, **question}
-            if question else None
-        ),
+        "next_question": ({"category": category, **question} if question else None),
         "interview_complete": question is None,
-    }
-
-    return jsonify(response)
+    })
 
 
 @app.route("/api/history/session/<int:session_id>", methods=["GET"])
 @auth_utils.require_auth
 def get_session_qa(session_id):
-    session = db.query(
-        "SELECT * FROM history_sessions WHERE session_id=%s",
-        (session_id,),
-        fetchone=True
-    )
-
+    session = db.query("SELECT * FROM history_sessions WHERE session_id=%s", (session_id,), fetchone=True)
     if not session:
         return jsonify({"error": "not found"}), 404
-
     if not auth_utils.owns_patient(session["patient_id"]):
         return jsonify({"error": "forbidden"}), 403
 
-    qa = db.query(
-        """
-        SELECT * FROM history_qa
-        WHERE session_id=%s
-        ORDER BY qa_id
-        """,
-        (session_id,)
-    )
-
-    return jsonify({
-        "session": session,
-        "qa": qa
-    })
+    qa = db.query("SELECT * FROM history_qa WHERE session_id=%s ORDER BY qa_id", (session_id,))
+    return jsonify({"session": session, "qa": qa})
 
 
 # =====================================================================
@@ -486,126 +316,58 @@ def get_session_qa(session_id):
 @app.route("/api/documents/upload", methods=["POST"])
 @auth_utils.require_auth
 def upload_document():
-    """
-    Step 3 - Scan. Multipart form upload.
-
-    Form fields:
-        patient_id,
-        session_id (optional),
-        doc_type
-
-    File field:
-        file
-    """
-
     if "file" not in request.files:
         return jsonify({"error": "no file part"}), 400
 
     file = request.files["file"]
-
     patient_id = request.form.get("patient_id")
     session_id = request.form.get("session_id") or None
     doc_type = request.form.get("doc_type", "other")
-
-    valid_doc_types = {
-        "prescription",
-        "lab_report",
-        "discharge_summary",
-        "imaging",
-        "other"
-    }
+    valid_doc_types = {"prescription", "lab_report", "discharge_summary", "imaging", "other"}
 
     if doc_type not in valid_doc_types:
         doc_type = "other"
 
     if not patient_id:
         return jsonify({"error": "patient_id is required"}), 400
-
     if not auth_utils.owns_patient(patient_id):
         return jsonify({"error": "forbidden"}), 403
-
     if file.filename == "" or not allowed_file(file.filename):
-        return jsonify({
-            "error": "only JPG, PNG, and PDF files are allowed"
-        }), 400
+        return jsonify({"error": "only JPG, PNG, and PDF files are allowed"}), 400
 
     extension = file.filename.rsplit(".", 1)[1].lower()
-
     if not verify_file_signature(file.stream, extension):
-        return jsonify({
-            "error": "file content does not match its extension"
-        }), 400
+        return jsonify({"error": "file content does not match its extension"}), 400
 
-    count_row = db.query(
-        "SELECT COUNT(*) AS c FROM documents WHERE patient_id=%s",
-        (patient_id,),
-        fetchone=True
-    )
-
+    count_row = db.query("SELECT COUNT(*) AS c FROM documents WHERE patient_id=%s", (patient_id,), fetchone=True)
     if count_row and count_row["c"] >= MAX_DOCUMENTS_PER_PATIENT:
-        return jsonify({
-            "error": (
-                f"upload limit reached "
-                f"({MAX_DOCUMENTS_PER_PATIENT} documents)"
-            )
-        }), 400
+        return jsonify({"error": f"upload limit reached ({MAX_DOCUMENTS_PER_PATIENT} documents)"}), 400
 
-    # Never trust the original filename for the stored path — generate our own
     safe_name = secure_filename(file.filename)
-
-    stored_filename = (
-        f"{patient_id}_{uuid.uuid4().hex}_{safe_name}"
-    )
-
-    file_path = os.path.join(
-        Config.UPLOAD_FOLDER,
-        stored_filename
-    )
-
+    stored_filename = f"{patient_id}_{uuid.uuid4().hex}_{safe_name}"
+    file_path = os.path.join(Config.UPLOAD_FOLDER, stored_filename)
     file.save(file_path)
 
     raw_text = ""
-
     if extension in {"png", "jpg", "jpeg"}:
         raw_text = ocr_module.run_ocr(file_path)
 
     document_id = db.execute(
-        """
-        INSERT INTO documents
-            (patient_id, session_id, doc_type, file_path, raw_ocr_text)
-        VALUES (%s,%s,%s,%s,%s)
-        """,
-        (
-            patient_id,
-            session_id,
-            doc_type,
-            file_path,
-            raw_text
-        ),
+        "INSERT INTO documents (patient_id, session_id, doc_type, file_path, raw_ocr_text) VALUES (%s,%s,%s,%s,%s)",
+        (patient_id, session_id, doc_type, file_path, raw_text),
     )
 
     entities = []
-
     if raw_text:
         entities = ocr_module.extract_entities(raw_text)
-
         for e in entities:
             db.execute(
                 """
                 INSERT INTO extracted_entities
-                    (document_id, entity_type, entity_name, value,
-                     unit, reference_range, is_abnormal)
+                    (document_id, entity_type, entity_name, value, unit, reference_range, is_abnormal)
                 VALUES (%s,%s,%s,%s,%s,%s,%s)
                 """,
-                (
-                    document_id,
-                    e["entity_type"],
-                    e["entity_name"],
-                    e["value"],
-                    e["unit"],
-                    e["reference_range"],
-                    e["is_abnormal"],
-                ),
+                (document_id, e["entity_type"], e["entity_name"], e["value"], e["unit"], e["reference_range"], e["is_abnormal"]),
             )
 
     return jsonify({
@@ -616,34 +378,24 @@ def upload_document():
         "extracted_entities": entities,
     }), 201
 
+
 @app.route("/api/documents/patient/<int:patient_id>/summarize-all", methods=["POST"])
 @auth_utils.require_auth
 @limiter.limit("5 per hour")
 def summarize_all_documents(patient_id):
-    """
-    Runs Gemini extraction across every document for this patient in one go.
-    Cached per-document — only documents without an existing ai_extractions
-    row (or when ?force=true) actually consume new Gemini tokens.
-    """
     if not auth_utils.owns_patient(patient_id):
         return jsonify({"error": "forbidden"}), 403
 
     force = request.args.get("force", "false").lower() == "true"
-
-    docs = db.query(
-        "SELECT * FROM documents WHERE patient_id=%s ORDER BY uploaded_at DESC",
-        (patient_id,),
-    )
-
+    docs = db.query("SELECT * FROM documents WHERE patient_id=%s ORDER BY uploaded_at DESC", (patient_id,))
     results = []
+    
     for doc in docs:
         document_id = doc["document_id"]
         entry = {"document_id": document_id, "doc_type": doc["doc_type"]}
 
         if not force:
-            cached = db.query(
-                "SELECT * FROM ai_extractions WHERE document_id=%s", (document_id,), fetchone=True
-            )
+            cached = db.query("SELECT * FROM ai_extractions WHERE document_id=%s", (document_id,), fetchone=True)
             if cached:
                 entry.update({
                     "cached": True,
@@ -678,10 +430,7 @@ def summarize_all_documents(patient_id):
                 for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
                     try:
                         parsed = dt.strptime(extracted_date, fmt).date()
-                        db.execute(
-                            "UPDATE documents SET document_date=%s WHERE document_id=%s",
-                            (parsed, document_id),
-                        )
+                        db.execute("UPDATE documents SET document_date=%s WHERE document_id=%s", (parsed, document_id))
                         break
                     except ValueError:
                         continue
@@ -693,6 +442,7 @@ def summarize_all_documents(patient_id):
 
     return jsonify({"results": results})
 
+
 @app.route("/api/documents/patient/<int:patient_id>", methods=["GET"])
 @auth_utils.require_auth
 def list_patient_documents(patient_id):
@@ -701,33 +451,25 @@ def list_patient_documents(patient_id):
 
     docs = db.query(
         """
-        SELECT document_id, doc_type, file_path,
-               document_date, uploaded_at
+        SELECT document_id, doc_type, file_path, document_date, uploaded_at
         FROM documents
         WHERE patient_id=%s
         ORDER BY uploaded_at DESC
         """,
         (patient_id,),
     )
-
     return jsonify(docs)
+
 
 @app.route("/api/documents/patient/<int:patient_id>/combined-summary", methods=["GET"])
 @auth_utils.require_auth
 def combined_document_summary(patient_id):
-    """
-    Aggregates every already-summarised document into one chronological
-    view: abnormal lab values surfaced separately, all medications pooled
-    across prescriptions/discharge summaries, and a basic interaction
-    flag. Uses ONLY cached ai_extractions — never calls Gemini itself.
-    """
     if not auth_utils.owns_patient(patient_id):
         return jsonify({"error": "forbidden"}), 403
 
     rows = db.query(
         """
-        SELECT d.document_id, d.doc_type, d.document_date, d.uploaded_at,
-               e.result_json, e.needs_review
+        SELECT d.document_id, d.doc_type, d.document_date, d.uploaded_at, e.result_json, e.needs_review
         FROM documents d
         LEFT JOIN ai_extractions e ON e.document_id = d.document_id
         WHERE d.patient_id=%s
@@ -736,9 +478,7 @@ def combined_document_summary(patient_id):
         (patient_id,),
     )
 
-    timeline = []
-    abnormal_tests = []
-    all_medications = []
+    timeline, abnormal_tests, all_medications = [], [], []
     any_needs_review = False
 
     for row in rows:
@@ -760,21 +500,15 @@ def combined_document_summary(patient_id):
             for test in entry["result"].get("tests", []) or []:
                 if test.get("is_abnormal"):
                     abnormal_tests.append({**test, "document_id": row["document_id"], "date": entry["document_date"]})
-
             for med in entry["result"].get("medications", []) or []:
                 all_medications.append({**med, "document_id": row["document_id"], "source": "prescription"})
-
             for med_name in entry["result"].get("medications_on_discharge", []) or []:
                 all_medications.append({"name": med_name, "document_id": row["document_id"], "source": "discharge_summary"})
 
     unique_med_names = {m["name"].strip().lower() for m in all_medications if m.get("name")}
     interaction_note = None
     if len(unique_med_names) >= 2:
-        interaction_note = (
-            "Multiple medications found across documents — a physician should review for "
-            "potential drug interactions. (This is a basic count-based flag, not a real "
-            "interaction check.)"
-        )
+        interaction_note = "Multiple medications found across documents — a physician should review for potential drug interactions."
 
     return jsonify({
         "timeline": timeline,
@@ -790,10 +524,6 @@ def combined_document_summary(patient_id):
 @app.route("/api/documents/patient/<int:patient_id>/clear-all", methods=["DELETE"])
 @auth_utils.require_auth
 def clear_all_documents(patient_id):
-    """
-    DPDP/consent-aligned 'clear my data' action — deletes every uploaded
-    document (and their extractions, files on disk) for this patient.
-    """
     if not auth_utils.owns_patient(patient_id):
         return jsonify({"error": "forbidden"}), 403
 
@@ -805,334 +535,158 @@ def clear_all_documents(patient_id):
             except OSError:
                 pass
 
-    db.execute(
-        "DELETE FROM extracted_entities WHERE document_id IN (SELECT document_id FROM documents WHERE patient_id=%s)",
-        (patient_id,),
-    )
+    db.execute("DELETE FROM extracted_entities WHERE document_id IN (SELECT document_id FROM documents WHERE patient_id=%s)", (patient_id,))
     db.execute("DELETE FROM ai_extractions WHERE document_id IN (SELECT document_id FROM documents WHERE patient_id=%s)", (patient_id,))
     db.execute("DELETE FROM documents WHERE patient_id=%s", (patient_id,))
 
     return jsonify({"status": "cleared", "deleted_count": len(docs)})
 
+
 @app.route("/api/documents/<int:document_id>/summarize", methods=["POST"])
 @auth_utils.require_auth
-@limiter.limit("15 per hour")
-def summarize_document(document_id):
-    """
-    On-demand Gemini extraction, button-triggered from the frontend.
-    Cached in ai_extractions — repeat calls return the cached result
-    UNLESS ?force=true is passed, to conserve free-tier API usage.
-    """
+def summarize_single_document(document_id):
     doc = db.query("SELECT * FROM documents WHERE document_id=%s", (document_id,), fetchone=True)
     if not doc:
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"error": "document not found"}), 404
     if not auth_utils.owns_patient(doc["patient_id"]):
         return jsonify({"error": "forbidden"}), 403
-
-    force = request.args.get("force", "false").lower() == "true"
-
-    if not force:
-        cached = db.query(
-            "SELECT * FROM ai_extractions WHERE document_id=%s", (document_id,), fetchone=True
-        )
-        if cached:
-            return jsonify({
-                "cached": True,
-                "result": json_lib.loads(cached["result_json"]),
-                "needs_review": bool(cached["needs_review"]),
-            })
-
-    if not os.path.exists(doc["file_path"]):
-        return jsonify({"error": "file missing on server"}), 404
 
     try:
         result = gemini_service.extract_from_document(doc["file_path"], doc["doc_type"])
-    except RuntimeError as e:
-        return jsonify({"error": str(e)}), 502
-
-    needs_review = bool(result.get("needs_review", False))
-
-    db.execute(
-        """
-        INSERT INTO ai_extractions (document_id, model_used, result_json, needs_review)
-        VALUES (%s,%s,%s,%s)
-        ON DUPLICATE KEY UPDATE
-            model_used=VALUES(model_used),
-            result_json=VALUES(result_json),
-            needs_review=VALUES(needs_review),
-            created_at=CURRENT_TIMESTAMP
-        """,
-        (document_id, Config.GEMINI_MODEL, json_lib.dumps(result), needs_review),
-    )
-
-    return jsonify({"cached": False, "result": result, "needs_review": needs_review})
-
-
-@app.route("/api/documents/<int:document_id>/file", methods=["GET"])
-@auth_utils.require_auth
-def get_document_file(document_id):
-    doc = db.query(
-        "SELECT * FROM documents WHERE document_id=%s",
-        (document_id,),
-        fetchone=True
-    )
-
-    if not doc:
-        return jsonify({"error": "not found"}), 404
-
-    if not auth_utils.owns_patient(doc["patient_id"]):
-        return jsonify({"error": "forbidden"}), 403
-
-    if not os.path.exists(doc["file_path"]):
-        return jsonify({"error": "file missing on server"}), 404
-
-    return send_file(doc["file_path"])
-
-
-@app.route("/api/documents/<int:document_id>", methods=["DELETE"])
-@auth_utils.require_auth
-def delete_document(document_id):
-    doc = db.query(
-        "SELECT * FROM documents WHERE document_id=%s",
-        (document_id,),
-        fetchone=True
-    )
-
-    if not doc:
-        return jsonify({"error": "not found"}), 404
-
-    if not auth_utils.owns_patient(doc["patient_id"]):
-        return jsonify({"error": "forbidden"}), 403
-
-    db.execute(
-        "DELETE FROM extracted_entities WHERE document_id=%s",
-        (document_id,)
-    )
-
-    db.execute(
-        "DELETE FROM documents WHERE document_id=%s",
-        (document_id,)
-    )
-
-    if os.path.exists(doc["file_path"]):
-        try:
-            os.remove(doc["file_path"])
-        except OSError:
-            pass  # DB row is already gone; stray file isn't demo-blocking
-
-    return jsonify({
-        "status": "deleted",
-        "document_id": document_id
-    })
-
-
-# =====================================================================
-# MODULE C — Structured History Summary Generator
-# =====================================================================
-
-@app.route("/api/summary/generate/<int:session_id>", methods=["POST"])
-@auth_utils.require_auth
-def generate_summary(session_id):
-    """
-    Step 4 - Summarize & Route. Builds and stores the structured summary.
-    """
-
-    session = db.query(
-        """
-        SELECT patient_id
-        FROM history_sessions
-        WHERE session_id=%s
-        """,
-        (session_id,),
-        fetchone=True
-    )
-import requests  # make sure this is at the top of app.py
-
-@app.route("/api/ai-summary/<int:session_id>", methods=["POST"])
-@auth_utils.require_auth
-def ai_summary(session_id):
-    """
-    Alternative summary generator using external AI service.
-    """
-
-    session = db.query(
-        "SELECT patient_id FROM history_sessions WHERE session_id=%s",
-        (session_id,),
-        fetchone=True
-    )
-
-    if not session:
-        return jsonify({"error": "session not found"}), 404
-
-    if not auth_utils.owns_patient(session["patient_id"]):
-        return jsonify({"error": "forbidden"}), 403
-
-    # Call external AI API using the key from Config
-    response = requests.post(
-        "https://api.huatuogpt.com/v1/chat",
-        headers={"Authorization": f"Bearer {Config.HUATUO_API_KEY}"},
-        json={"input": f"Summarize session {session_id}"}
-    )
-
-    if response.status_code != 200:
-        return jsonify({"error": "AI service failed"}), 500
-
-    ai_output = response.json()
-
-    return jsonify({
-        "session_id": session_id,
-        "summary_json": ai_output.get("structured"),
-        "summary_text": ai_output.get("text")
-    })
-
-    if not session:
-        return jsonify({"error": "session not found"}), 404
-
-    if not auth_utils.owns_patient(session["patient_id"]):
-        return jsonify({"error": "forbidden"}), 403
-
-    try:
-        structured, text = summary_generator.build_summary(session_id)
-
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 404
-
-    return jsonify({
-        "session_id": session_id,
-        "summary_json": structured,
-        "summary_text": text
-    })
-
-
-@app.route("/api/summary/<int:session_id>", methods=["GET"])
-@auth_utils.require_auth
-def get_summary(session_id):
-    session = db.query(
-        """
-        SELECT patient_id
-        FROM history_sessions
-        WHERE session_id=%s
-        """,
-        (session_id,),
-        fetchone=True
-    )
-
-    if not session:
-        return jsonify({"error": "not found"}), 404
-
-    if not auth_utils.owns_patient(session["patient_id"]):
-        return jsonify({"error": "forbidden"}), 403
-
-    summary = db.query(
-        """
-        SELECT * FROM clinical_summaries
-        WHERE session_id=%s
-        """,
-        (session_id,),
-        fetchone=True
-    )
-
-    if not summary:
-        return jsonify({
-            "error": "summary not yet generated"
-        }), 404
-
-    return jsonify(summary)
-
-
-@app.route("/api/summary/<int:session_id>/confirm", methods=["POST"])
-def confirm_summary(session_id):
-    """
-    Step 5 - Consult. Physician edits/confirms and (simulated)
-    pushes to HIS + ABHA.
-
-    NOTE: intentionally NOT patient-auth-protected — this is a physician-side
-    action. Physician auth/authorization will be added when the physician
-    login flow is built.
-
-    Body JSON (optional):
-        { edited_summary_text }
-    """
-
-    data = request.get_json(force=True, silent=True) or {}
-    edited_text = data.get("edited_summary_text")
-
-    if edited_text:
+        needs_review = bool(result.get("needs_review", False))
         db.execute(
             """
-            UPDATE clinical_summaries
-            SET summary_text=%s,
-                physician_edited=TRUE,
-                pushed_to_his=TRUE,
-                abha_linked=TRUE
-            WHERE session_id=%s
+            INSERT INTO ai_extractions (document_id, model_used, result_json, needs_review)
+            VALUES (%s,%s,%s,%s)
+            ON DUPLICATE KEY UPDATE
+                model_used=VALUES(model_used),
+                result_json=VALUES(result_json),
+                needs_review=VALUES(needs_review),
+                created_at=CURRENT_TIMESTAMP
             """,
-            (edited_text, session_id),
+            (document_id, Config.GEMINI_MODEL, json_lib.dumps(result), needs_review),
         )
-
-    else:
-        db.execute(
-            """
-            UPDATE clinical_summaries
-            SET pushed_to_his=TRUE,
-                abha_linked=TRUE
-            WHERE session_id=%s
-            """,
-            (session_id,),
-        )
-
-    summary = db.query(
-        """
-        SELECT * FROM clinical_summaries
-        WHERE session_id=%s
-        """,
-        (session_id,),
-        fetchone=True
-    )
-
-    return jsonify({
-        "status": "confirmed_and_pushed",
-        "summary": summary
-    })
-
-
-# =====================================================================
-# Health check
-# =====================================================================
-
-@app.route("/api/health", methods=["GET"])
-def health():
-    return jsonify({
-        "status": "ok",
-        "service": "MediKiosk backend"
-    })
-
-
-# =====================================================================
-# GEMINI CHAT SERVICE
-# =====================================================================
-
-@app.route("/api/chat", methods=["POST"])
-@limiter.limit("30 per hour")
-def chat():
-    data = request.get_json(force=True)
-    message = (data.get("message") or "").strip()
-    session_id = data.get("session_id") or str(uuid.uuid4())
-
-    if not message:
-        return jsonify({"error": "message is required"}), 400
-
-    try:
-        reply = gemini_services.get_chat_response(session_id, message)
+        return jsonify({"status": "success", "result": result, "needs_review": needs_review})
     except Exception as e:
-        return jsonify({"error": f"chat service failed: {e}"}), 502
-
-    return jsonify({"session_id": session_id, "reply": reply})
+        return jsonify({"error": str(e)}), 500
 
 
-if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=5000,
-        debug=Config.DEBUG
+# =====================================================================
+# AI INTAKE CHAT ENDPOINT
+# =====================================================================
+
+INTAKE_SYSTEM_PROMPT = (
+    "You are an empathetic, professional AI medical intake assistant for MediKiosk. "
+    "Your primary goal is to gather a detailed history of present illness and current symptoms from the patient. "
+    "When a patient describes how they feel or what symptoms they have, ask focused, gentle follow-up questions "
+    "one at a time to clarify the location, onset, duration, severity, character, and aggravating/relieving factors. "
+    "Keep your messages concise, simple, and supportive. Do NOT offer medical diagnoses, treatments, or prescriptions. "
+    "Focus entirely on gathering complete clinical history to prepare for the physician."
+)
+
+# --- 1. INITIALIZE GEMINI ---
+api_key = os.getenv("GEMINI_API_KEY")
+if api_key:
+    genai.configure(api_key=api_key)
+
+# --- 2. INITIALIZE TTS MODEL (LOADS ONCE ON STARTUP) ---
+hf_token = os.getenv("HF_TOKEN")
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
+print(f"➜ Loading Indic Parler-TTS on {device}...")
+
+try:
+    from parler_tts import ParlerTTSForConditionalGeneration
+    from transformers import AutoTokenizer
+
+    tts_model = ParlerTTSForConditionalGeneration.from_pretrained(
+        "ai4bharat/indic-parler-tts", token=hf_token
+    ).to(device)
+    
+    tokenizer = AutoTokenizer.from_pretrained("ai4bharat/indic-parler-tts", token=hf_token)
+    description_tokenizer = AutoTokenizer.from_pretrained(
+        tts_model.config.text_encoder._name_or_path, token=hf_token
     )
+    print("✅ TTS Model loaded successfully and ready.")
+except Exception as e:
+    print(f"❌ Failed to load TTS model: {e}")
+    tts_model = None
+
+
+@app.route('/api/chat/intake', methods=['POST'])
+def intake_chat():
+    try:
+        data = request.get_json(silent=True) or {}
+        user_text = data.get('message') or data.get('prompt') or ''
+        lang = data.get('lang', 'en')
+
+        if not user_text:
+            return jsonify({"reply": "Please describe your symptoms."}), 400
+
+        # Map language codes to language names for Gemini
+        lang_names = {
+            "en": "English",
+            "hi": "Hindi",
+            "pa": "Punjabi",
+            "ta": "Tamil",
+            "bn": "Bengali"
+        }
+        target_lang = lang_names.get(lang, "English")
+
+        # --- 1. GET GEMINI RESPONSE IN SELECTED LANGUAGE ---
+        model = genai.GenerativeModel('gemini-3.6-flash')
+        prompt = (
+            f"You are a medical kiosk intake assistant. "
+            f"Reply compassionately in 1-2 sentences and ask 1 follow-up question. "
+            f"IMPORTANT: Respond entirely in the {target_lang} language.\n"
+            f"Patient input: {user_text}"
+        )
+        
+        gemini_response = model.generate_content(prompt)
+        ai_text = gemini_response.text
+
+        # --- 2. GENERATE TTS AUDIO (IN-MEMORY RAM BUFFER) ---
+        audio_base64 = None
+        if tts_model:
+            description = "Divya speaks in a clear, expressive voice at a normal pace in a quiet environment with very clear audio quality."
+            
+            input_ids = description_tokenizer(description, return_tensors="pt").input_ids.to(device)
+            prompt_input_ids = tokenizer(ai_text, return_tensors="pt").input_ids.to(device)
+            
+            # Generate waveform on GPU
+            generation = tts_model.generate(input_ids=input_ids, prompt_input_ids=prompt_input_ids)
+            audio_arr = generation.cpu().numpy().squeeze()
+            
+            # Convert waveform to base64 via memory buffer
+            buffer = io.BytesIO()
+            sf.write(buffer, audio_arr, tts_model.config.sampling_rate, format='WAV')
+            buffer.seek(0)
+            audio_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+
+        return jsonify({
+            "reply": ai_text,
+            "audio": audio_base64
+        })
+
+    except Exception as e:
+        print(f"Backend Error: {e}")
+        return jsonify({"reply": f"Server Error: {str(e)}"}), 500
+
+@app.route("/api/intake/complete", methods=["POST"])
+def intake_complete():
+    data = request.json or {}
+    patient_id = data.get("patientId")
+    chat_history = data.get("chatHistory", [])
+    lang = data.get("lang", "en")
+
+    # TODO: Write chat_history to your database here
+
+    print(f"✅ Successfully received intake for patient: {patient_id} ({len(chat_history)} messages)")
+
+    return jsonify({
+        "status": "success",
+        "message": "Intake saved successfully.",
+        "patientId": patient_id
+    })
+
+if __name__ == '__main__':
+    app.run(host='127.0.0.1', port=5000, debug=False)

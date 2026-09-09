@@ -159,8 +159,15 @@ export default function PatientLogin() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "failed");
+      
       saveSession(data.token, data.patient);
-      setPatientName(data.patient.full_name);
+
+      // Store the patient ID explicitly for ProtectedRoute checks
+      const resolvedPatientId = data.patient?.id || data.patient?.patient_id || idValue;
+      localStorage.setItem("patient_id", String(resolvedPatientId));
+      localStorage.setItem("patientId", String(resolvedPatientId));
+
+      setPatientName(data.patient?.full_name || "Patient");
       setStep("success");
     } catch {
       setError(t.errorOtp);
@@ -193,8 +200,15 @@ export default function PatientLogin() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "failed");
+      
       saveSession(data.token, data.patient);
-      setPatientName(data.patient.full_name);
+
+      // Store the patient ID explicitly for ProtectedRoute checks
+      const resolvedPatientId = data.patient?.id || data.patient?.patient_id || idValue;
+      localStorage.setItem("patient_id", String(resolvedPatientId));
+      localStorage.setItem("patientId", String(resolvedPatientId));
+
+      setPatientName(data.patient?.full_name || fullName);
       setStep("success");
     } catch {
       setError(t.errorOtp);

@@ -18,7 +18,8 @@ const PT: Record<Lang, {
   emergencyConfirm: string; emergencyCancel: string; emergencySent: string;
   greeting: string; subtitle: string;
   consentTitle: string; consentBody: string; listen: string; agree: string; consentRequired: string;
-  deptTitle: string; deptGeneral: string; deptGeneralDesc: string; deptAyush: string; deptAyushDesc: string;
+  deptTitle: string; deptGeneral: string; deptGeneralDesc: string;
+  deptAyush: string; deptAyushDesc: string;
   interviewTitle: string; interviewDesc: string; interviewCta: string;
   uploadTitle: string; uploadDesc: string; uploadCta: string;
   footer: string; audioTourBtn: string; logoutBtn: string;
@@ -193,6 +194,21 @@ export default function PatientHome() {
     }
   }
 
+  function handleLangChange(newLang: Lang) {
+    setLang(newLang);
+    localStorage.setItem("medikiosk-lang", newLang);
+  }
+
+  // Safely format ABHA or reference ID if present
+  function formatAbhaNumber(num?: string) {
+    if (!num) return null;
+    const clean = num.replace(/\D/g, "");
+    if (clean.length === 14) {
+      return `XX-XXXX-XXXX-${clean.slice(-4)}`;
+    }
+    return num;
+  }
+
   useEffect(() => {
     const savedLang = localStorage.getItem("medikiosk-lang") as Lang | null;
     if (savedLang) setLang(savedLang);
@@ -299,11 +315,36 @@ export default function PatientHome() {
       </div>
 
       <div className="mx-auto max-w-3xl px-6 py-10">
-        <div className="flex items-center justify-between gap-2">
+        {/* Header Bar with Logo, Language Selector & Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <p style={displayFont} className="text-xl font-semibold">
             Medi<span className="text-[#E9A23F]">Kiosk</span>
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            
+            {/* Language Selector (FIXED: Safely getting the string label out of the object) */}
+            <div className="flex items-center rounded-full border border-[#1C2420]/15 bg-white/50 p-1">
+              {Object.keys(LANGUAGES).map((key) => {
+                const k = key as Lang;
+                // Grab the actual string value from the object
+                const langData = LANGUAGES[k] as any;
+                // Use native name (like 'हिन्दी') or label ('Hindi') or fallback to key ('hi')
+                const displayLabel = langData?.native || langData?.label || k;
+                
+                return (
+                  <button
+                    key={k}
+                    onClick={() => handleLangChange(k)}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                      lang === k ? "bg-[#2F6F63] text-white shadow-sm" : "text-[#1C2420]/70 hover:bg-[#1C2420]/5"
+                    }`}
+                  >
+                    {displayLabel}
+                  </button>
+                );
+              })}
+            </div>
+
             <button
               onClick={startTour}
               className="rounded-full border border-[#2F6F63]/40 px-3 py-1.5 text-xs font-medium text-[#2F6F63] hover:bg-[#2F6F63]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F6F63]"
@@ -318,13 +359,38 @@ export default function PatientHome() {
             </button>
           </div>
         </div>
-        <h1 style={displayFont} className="mt-6 text-3xl font-medium">
-          {t.greeting}, {patient?.full_name}
-        </h1>
-        <p className="mt-1 text-[#1C2420]/70">{t.subtitle}</p>
+
+        {/* Patient Info Card */}
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#1C2420]/10 bg-white/40 p-5 backdrop-blur-sm">
+          <div>
+            <h1 style={displayFont} className="text-2xl font-medium sm:text-3xl">
+              {t.greeting}, {patient?.full_name || "Patient"}
+            </h1>
+            <p className="mt-1 text-sm text-[#1C2420]/70">{t.subtitle}</p>
+          </div>
+          {(patient?.abha_number || patient?.gender || patient?.age) && (
+            <div className="flex flex-wrap gap-2 text-xs font-medium text-[#1C2420]/80">
+              {patient?.abha_number && (
+                <span className="rounded-full bg-[#2F6F63]/10 px-3 py-1 text-[#2F6F63]">
+                  ABHA: {formatAbhaNumber(patient.abha_number)}
+                </span>
+              )}
+              {patient?.gender && (
+                <span className="rounded-full bg-[#1C2420]/5 px-3 py-1 capitalize">
+                  {patient.gender}
+                </span>
+              )}
+              {patient?.age && (
+                <span className="rounded-full bg-[#1C2420]/5 px-3 py-1">
+                  {patient.age} yrs
+                </span>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Consent card */}
-        <div ref={consentRef} className="mt-8 rounded-2xl border border-[#1C2420]/10 bg-white/60 p-6">
+        <div ref={consentRef} className="mt-6 rounded-2xl border border-[#1C2420]/10 bg-white/60 p-6">
           <div className="flex items-start justify-between gap-4">
             <h2 style={displayFont} className="text-lg font-medium">{t.consentTitle}</h2>
             <button
