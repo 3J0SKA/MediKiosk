@@ -9,6 +9,7 @@ import {
   Noto_Sans_Bengali,
 } from "next/font/google";
 import "./globals.css";
+import ChatWidget from "../components/ChatWidget";
 
 const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-display", weight: ["400", "500", "600"], style: ["normal", "italic"] });
 const plexSans = IBM_Plex_Sans({ subsets: ["latin"], variable: "--font-body", weight: ["400", "500", "600"] });
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         className={`${fraunces.variable} ${plexSans.variable} ${plexMono.variable} ${notoHi.variable} ${notoPa.variable} ${notoTa.variable} ${notoBn.variable} font-[family-name:var(--font-body)] antialiased`}
       >
         {children}
+        <ChatWidget />
       </body>
     </html>
   );

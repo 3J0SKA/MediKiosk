@@ -17,6 +17,7 @@ import uuid
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+import gemini_services
 import db
 import history_engine
 import ocr_module
@@ -828,6 +829,28 @@ def health():
         "status": "ok",
         "service": "MediKiosk backend"
     })
+
+
+# =====================================================================
+# GEMINI CHAT SERVICE
+# =====================================================================
+
+@app.route("/api/chat", methods=["POST"])
+@limiter.limit("30 per hour")
+def chat():
+    data = request.get_json(force=True)
+    message = (data.get("message") or "").strip()
+    session_id = data.get("session_id") or str(uuid.uuid4())
+
+    if not message:
+        return jsonify({"error": "message is required"}), 400
+
+    try:
+        reply = gemini_services.get_chat_response(session_id, message)
+    except Exception as e:
+        return jsonify({"error": f"chat service failed: {e}"}), 502
+
+    return jsonify({"session_id": session_id, "reply": reply})
 
 
 if __name__ == "__main__":
