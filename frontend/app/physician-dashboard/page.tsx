@@ -60,6 +60,9 @@ export default function PhysicianDashboard() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<PatientDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [consultationOpen, setConsultationOpen] = useState(false);
 
   useEffect(() => {
     loadPatients();
@@ -67,15 +70,20 @@ export default function PhysicianDashboard() {
 
   async function loadPatients() {
     setLoadingList(true);
+    setListError(null);
     try {
       const res = await fetch(`${BACKEND_URL}/api/physician/patients`);
-      if (res.ok) {
-        const data = await res.json();
-        setPatients(data);
-        if (data.length > 0 && selectedId === null) {
-          setSelectedId(data[0].patient_id);
-        }
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`${res.status} ${res.statusText} — ${body || "no response body"}`);
       }
+      const data = await res.json();
+      setPatients(data);
+      setSelectedId((prev) => (prev === null && data.length > 0 ? data[0].patient_id : prev));
+    } catch (err: any) {
+      console.error("Failed to load physician patient queue:", err);
+      setListError(err?.message || "Failed to load patient queue.");
+      setPatients([]);
     } finally {
       setLoadingList(false);
     }
@@ -84,9 +92,22 @@ export default function PhysicianDashboard() {
   useEffect(() => {
     if (selectedId === null) return;
     setLoadingDetail(true);
+    setDetailError(null);
+    setConsultationOpen(false);
     fetch(`${BACKEND_URL}/api/physician/patients/${selectedId}`)
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          throw new Error(`${res.status} ${res.statusText} — ${body || "no response body"}`);
+        }
+        return res.json();
+      })
       .then(setDetail)
+      .catch((err: any) => {
+        console.error("Failed to load patient detail:", err);
+        setDetailError(err?.message || "Failed to load patient detail.");
+        setDetail(null);
+      })
       .finally(() => setLoadingDetail(false));
   }, [selectedId]);
 
@@ -154,6 +175,17 @@ export default function PhysicianDashboard() {
 
           {loadingList ? (
             <p className="text-sm text-[#7A8C82]">Loading…</p>
+          ) : listError ? (
+            <div className="rounded-lg border border-red-800 bg-red-950/40 p-4 text-sm text-red-300">
+              <p className="font-semibold">Couldn't load the patient queue.</p>
+              <p className="mt-1 text-red-300/80">{listError}</p>
+              <button
+                onClick={loadPatients}
+                className="mt-3 rounded-lg border border-red-700 px-3 py-1.5 text-xs font-semibold hover:bg-red-900/40"
+              >
+                Retry
+              </button>
+            </div>
           ) : filteredPatients.length === 0 ? (
             <p className="text-sm text-[#7A8C82]">No patients with a completed summary yet.</p>
           ) : (
@@ -189,6 +221,11 @@ export default function PhysicianDashboard() {
         <div className="md:col-span-2 bg-[#1C2420] p-6 rounded-xl shadow-md border border-[#2D3A34]">
           {loadingDetail ? (
             <p className="text-sm text-[#7A8C82]">Loading patient details…</p>
+          ) : detailError ? (
+            <div className="rounded-lg border border-red-800 bg-red-950/40 p-4 text-sm text-red-300">
+              <p className="font-semibold">Couldn't load this patient's details.</p>
+              <p className="mt-1 text-red-300/80">{detailError}</p>
+            </div>
           ) : !detail ? (
             <p className="text-sm text-[#7A8C82]">Select a patient from the queue.</p>
           ) : (
@@ -332,7 +369,10 @@ export default function PhysicianDashboard() {
                   </div>
 
                   <div className="pt-4 flex gap-3 border-t border-[#2D3A34]">
-                    <button className="px-5 py-2.5 bg-[#E9A23F] text-black font-semibold rounded-lg hover:bg-[#d49133] transition">
+                    <button
+                      onClick={() => setConsultationOpen(true)}
+                      className="px-5 py-2.5 bg-[#E9A23F] text-black font-semibold rounded-lg hover:bg-[#d49133] transition"
+                    >
                       Start Consultation
                     </button>
                     <button className="px-5 py-2.5 bg-[#25322C] text-[#E4EAE6] font-medium rounded-lg hover:bg-[#2D3A34] transition">
@@ -345,6 +385,130 @@ export default function PhysicianDashboard() {
           )}
         </div>
       </div>
+
+      {/* Consultation modal — full detail with inline document previews */}
+      {consultationOpen && detail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[#2D3A34] bg-[#1C2420] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#2D3A34] px-6 py-4">
+              <div>
+                <h2 className="text-xl font-bold text-white">Consultation — {detail.patient.full_name}</h2>
+                <p className="text-xs text-[#94A39A]">
+                  ID: #{detail.patient.patient_id} • {detail.patient.age ?? "—"} yrs / {detail.patient.gender}
+                  {detail.priority && (
+                    <span className={`ml-2 rounded px-2 py-0.5 text-xs font-medium ${PRIORITY_STYLES[detail.priority]}`}>
+                      {PRIORITY_LABEL[detail.priority]}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={() => setConsultationOpen(false)}
+                className="rounded-lg border border-[#2D3A34] px-3 py-1.5 text-sm text-[#94A39A] hover:bg-[#242F2A]"
+              >
+                Close ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+              {detail.structured_summary?.red_flags && detail.structured_summary.red_flags.length > 0 && (
+                <div className="rounded-lg border border-red-800 bg-red-950/40 p-4">
+                  <h3 className="text-xs font-bold text-red-300 uppercase tracking-wider">⚠ Priority Flags</h3>
+                  <ul className="mt-2 space-y-1 text-sm text-red-200">
+                    {detail.structured_summary.red_flags.map((f, i) => (
+                      <li key={i}>⚠ {f}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div>
+                <h3 className="text-xs font-bold text-[#7A8C82] uppercase tracking-wider">Chief Complaint</h3>
+                <p className="mt-1 text-lg font-medium text-white">
+                  {detail.structured_summary?.chief_complaint || detail.chief_complaint || "Not stated"}
+                </p>
+              </div>
+
+              {detail.structured_summary?.history_of_present_illness && (
+                <div>
+                  <h3 className="text-xs font-bold text-[#7A8C82] uppercase tracking-wider">History of Present Illness</h3>
+                  <div className="mt-2 rounded-lg border border-[#2D3A34] bg-[#141A17] p-4 text-[#C4D1C9]">
+                    {detail.structured_summary.history_of_present_illness}
+                  </div>
+                </div>
+              )}
+
+              {/* Uploaded documents — the whole reason this modal exists */}
+              <div>
+                <h3 className="text-xs font-bold text-[#7A8C82] uppercase tracking-wider">
+                  Uploaded Documents ({detail.documents.length})
+                </h3>
+                {detail.documents.length === 0 ? (
+                  <p className="mt-2 text-sm text-[#7A8C82]">No documents uploaded.</p>
+                ) : (
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {detail.documents.map((d) => (
+                      <button
+                        key={d.document_id}
+                        onClick={() => viewDocument(d.document_id)}
+                        className="group flex flex-col overflow-hidden rounded-lg border border-[#2D3A34] bg-[#141A17] text-left transition hover:border-[#2F6F63]"
+                      >
+                        <div className="flex h-28 items-center justify-center overflow-hidden bg-[#0E1411]">
+                          <img
+                            src={`${BACKEND_URL}/api/physician/documents/${d.document_id}/file`}
+                            alt={d.doc_type}
+                            className="h-full w-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                              const fallback = (e.target as HTMLImageElement).nextElementSibling as HTMLElement | null;
+                              if (fallback) fallback.style.display = "flex";
+                            }}
+                          />
+                          <div className="hidden h-full w-full items-center justify-center text-3xl text-[#3E4E46]">
+                            📄
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between px-3 py-2">
+                          <span className="text-xs font-medium capitalize text-[#C4D1C9]">
+                            {d.doc_type.replace("_", " ")}
+                          </span>
+                          <span className="text-xs text-[#69D9BD] opacity-0 transition group-hover:opacity-100">
+                            Open →
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {detail.structured_summary?.current_medications && detail.structured_summary.current_medications.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold text-[#7A8C82] uppercase tracking-wider">Current Medications</h3>
+                  <ul className="mt-2 list-disc pl-5 text-sm text-[#C4D1C9] space-y-1">
+                    {detail.structured_summary.current_medications.map((m, i) => (
+                      <li key={i}>
+                        {m.name}
+                        {m.dosage ? ` — ${m.dosage}` : ""}
+                        {m.frequency ? ` (${m.frequency})` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-[#2D3A34] px-6 py-4">
+              <button
+                onClick={() => setConsultationOpen(false)}
+                className="rounded-lg border border-[#2D3A34] px-5 py-2.5 text-sm font-medium text-[#E4EAE6] hover:bg-[#242F2A]"
+              >
+                End Consultation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

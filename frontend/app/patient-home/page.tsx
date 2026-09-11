@@ -444,21 +444,18 @@ export default function PatientHome() {
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center rounded-full border border-[#1C2420]/15 bg-white/50 p-1">
-              {Object.keys(LANGUAGES).map((key) => {
-                const k = key as Lang;
-                const langData = LANGUAGES[k] as any;
-                const displayLabel = langData?.native || langData?.label || k;
-                const isSelected = baseLangKey === k.toLowerCase().split("-")[0];
+              {LANGUAGES.map((l) => {
+                const isSelected = baseLangKey === l.code.toLowerCase().split("-")[0];
 
                 return (
                   <button
-                    key={k}
-                    onClick={() => handleLangChange(k)}
+                    key={l.code}
+                    onClick={() => handleLangChange(l.code)}
                     className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
                       isSelected ? "bg-[#2F6F63] text-white shadow-sm" : "text-[#1C2420]/70 hover:bg-[#1C2420]/5"
                     }`}
                   >
-                    {displayLabel}
+                    {l.native}
                   </button>
                 );
               })}

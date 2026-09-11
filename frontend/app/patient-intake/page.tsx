@@ -79,6 +79,17 @@ export default function PatientIntakeChat() {
     if (saved && LOCALE_MAP[saved]) {
       setLang(saved);
     }
+
+    const syncLang = () => {
+      const current = localStorage.getItem("medikiosk-lang") as Lang | null;
+      if (current && LOCALE_MAP[current]) setLang(current);
+    };
+    window.addEventListener("storage", syncLang);
+    window.addEventListener("languageChange", syncLang);
+    return () => {
+      window.removeEventListener("storage", syncLang);
+      window.removeEventListener("languageChange", syncLang);
+    };
   }, []);
 
 useEffect(() => {
@@ -354,6 +365,7 @@ useEffect(() => {
                 const l = e.target.value as Lang;
                 setLang(l);
                 localStorage.setItem("medikiosk-lang", l);
+                window.dispatchEvent(new Event("languageChange"));
               }}
               className="rounded-lg border border-[#1C2420]/20 bg-white px-2 py-1 text-xs font-semibold text-[#10241F] focus:outline-none"
             >

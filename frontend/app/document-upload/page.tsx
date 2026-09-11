@@ -394,14 +394,26 @@ export default function DocumentUpload() {
   function handleLangChange(newLang: Lang) {
     setLang(newLang);
     localStorage.setItem("medikiosk-lang", newLang);
+    window.dispatchEvent(new Event("languageChange"));
   }
 
   useEffect(() => {
-    const savedLang = localStorage.getItem("medikiosk-lang") as Lang | null;
-    if (savedLang) setLang(savedLang);
+    const syncLang = () => {
+      const savedLang = localStorage.getItem("medikiosk-lang") as Lang | null;
+      if (savedLang) setLang(savedLang);
+    };
+    syncLang();
+    window.addEventListener("storage", syncLang);
+    window.addEventListener("languageChange", syncLang);
+
     if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.getVoices();
     const dismissed = localStorage.getItem(TOUR_DISMISSED_KEY);
     if (!dismissed) setTourPromptOpen(true);
+
+    return () => {
+      window.removeEventListener("storage", syncLang);
+      window.removeEventListener("languageChange", syncLang);
+    };
   }, []);
 
   useEffect(() => () => stopSpeaking(), []);
@@ -626,23 +638,19 @@ export default function DocumentUpload() {
           <div className="flex flex-wrap items-center gap-2">
             {/* Language Selector */}
             <div className="flex items-center rounded-full border border-[#1C2420]/15 bg-white/50 p-1">
-              {Object.keys(LANGUAGES).map((key) => {
-                const k = key as Lang;
-                const langData = LANGUAGES[k] as any;
-                const displayLabel = langData?.native || langData?.label || k;
-                
-                return (
-                  <button
-                    key={k}
-                    onClick={() => handleLangChange(k)}
-                    className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                      lang === k ? "bg-[#2F6F63] text-white shadow-sm" : "text-[#1C2420]/70 hover:bg-[#1C2420]/5"
-                    }`}
-                  >
-                    {displayLabel}
-                  </button>
-                );
-              })}
+              {LANGUAGES.map((l) => (
+                <button
+                  key={l.code}
+                  onClick={() => handleLangChange(l.code)}
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                    baseLangKey === l.code.toLowerCase().split("-")[0]
+                      ? "bg-[#2F6F63] text-white shadow-sm"
+                      : "text-[#1C2420]/70 hover:bg-[#1C2420]/5"
+                  }`}
+                >
+                  {l.native}
+                </button>
+              ))}
             </div>
 
             <button
