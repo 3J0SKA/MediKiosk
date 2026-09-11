@@ -8,12 +8,14 @@ import { useRequireAuth } from "../../lib/useRequireAuth";
 import IdleWarningModal from "../../components/IdleWarningModal";
 
 // ---------- Tour targets ----------
-type TourTarget = "intro" | "emergency" | "consent" | "department" | "interview" | "upload";
-const TOUR_TARGETS: TourTarget[] = ["intro", "emergency", "consent", "department", "interview", "upload"];
+type TourTarget = "intro" | "emergency" | "consent" | "department" | "interview" | "upload" | "summary";
+const TOUR_TARGETS: TourTarget[] = ["intro", "emergency", "consent", "department", "interview", "upload", "summary"];
 const TOUR_DISMISSED_KEY = "medikiosk-tour-dismissed";
 
-// ---------- Translations ----------
-const PT: Record<Lang, {
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+
+// ---------- Translation Content Type ----------
+type TranslationContent = {
   emergency: string; emergencyBtn: string; emergencyModalTitle: string; emergencyModalBody: string;
   emergencyConfirm: string; emergencyCancel: string; emergencySent: string;
   greeting: string; subtitle: string;
@@ -22,11 +24,16 @@ const PT: Record<Lang, {
   deptAyush: string; deptAyushDesc: string;
   interviewTitle: string; interviewDesc: string; interviewCta: string;
   uploadTitle: string; uploadDesc: string; uploadCta: string;
+  summaryTitle: string; summaryDesc: string; summaryCta: string; summaryGenerating: string; summaryLocked: string;
+  popupTitle: string; popupBody: string; popupClose: string; popupGenerate: string;
   footer: string; audioTourBtn: string; logoutBtn: string;
   tourPromptTitle: string; tourPromptBody: string; tourYes: string; tourNo: string;
   tourPrev: string; tourNext: string; tourEnd: string;
   tourSteps: string[];
-}> = {
+};
+
+// ---------- Translations ----------
+const PT: Record<string, TranslationContent> = {
   en: {
     emergency: "Having a medical emergency right now?", emergencyBtn: "Get help now",
     emergencyModalTitle: "Alert hospital staff", emergencyModalBody: "This will immediately notify nearby staff that you need urgent attention. A staff member will come to you.",
@@ -40,6 +47,10 @@ const PT: Record<Lang, {
     interviewCta: "Begin →",
     uploadTitle: "Upload old documents", uploadDesc: "Prescriptions, lab reports, or discharge summaries.",
     uploadCta: "Upload →",
+    summaryTitle: "Final Medical Summary", summaryDesc: "Compiles your AI interview and documents into a clean PDF for your doctor.",
+    summaryCta: "📄 Generate & Download PDF", summaryGenerating: "Gemini is generating your PDF...", summaryLocked: "Complete both tasks above to unlock",
+    popupTitle: "All Intake Tasks Complete!", popupBody: "You have completed both the AI interview and document upload. You can now generate your final summary for the doctor.",
+    popupClose: "Later", popupGenerate: "Generate PDF",
     footer: "Your data is linked to your ABHA record and cleared from this kiosk after your visit.",
     audioTourBtn: "🔊 Audio tour", logoutBtn: "Log out",
     tourPromptTitle: "Would you like an audio guide?", tourPromptBody: "We can walk you through this page with voice narration and highlights.",
@@ -51,6 +62,7 @@ const PT: Record<Lang, {
       "Next, choose whether this is a General Medicine visit or an Ayurveda, AYUSH, visit.",
       "Tap here to start your health interview by speaking or tapping your answers.",
       "Or tap here first if you'd like to upload old prescriptions or reports.",
+      "Once both are done, tap here to generate your clean final PDF summary for your doctor.",
     ],
   },
   hi: {
@@ -66,6 +78,10 @@ const PT: Record<Lang, {
     interviewCta: "शुरू करें →",
     uploadTitle: "पुराने दस्तावेज़ अपलोड करें", uploadDesc: "पर्चे, लैब रिपोर्ट, या डिस्चार्ज सारांश।",
     uploadCta: "अपलोड करें →",
+    summaryTitle: "अंतिम चिकित्सा सारांश", summaryDesc: "डॉक्टर के लिए एआई साक्षात्कार और दस्तावेज़ों को एक साफ़ पीडीएफ में तैयार करता है।",
+    summaryCta: "📄 पीडीएफ डाउनलोड करें", summaryGenerating: "जेमिनी पीडीएफ बना रहा है...", summaryLocked: "अनलॉक करने के लिए ऊपर दिए गए दोनों कार्य पूरे करें",
+    popupTitle: "सभी कार्य पूरे हो गए हैं!", popupBody: "आपने एआई साक्षात्कार और दस्तावेज़ अपलोड दोनों पूरे कर लिए हैं। अब आप डॉक्टर के लिए अपना अंतिम सारांश जनरेट कर सकते हैं।",
+    popupClose: "बाद में", popupGenerate: "पीडीएफ बनाएं",
     footer: "आपका डेटा आपके ABHA रिकॉर्ड से जुड़ा है और यात्रा के बाद इस कियोस्क से हटा दिया जाता है।",
     audioTourBtn: "🔊 ऑडियो टूर", logoutBtn: "लॉग आउट",
     tourPromptTitle: "क्या आप ऑडियो गाइड चाहेंगे?", tourPromptBody: "हम आवाज़ और हाइलाइट के साथ इस पेज को समझा सकते हैं।",
@@ -77,6 +93,7 @@ const PT: Record<Lang, {
       "इसके बाद चुनें कि यह सामान्य चिकित्सा है या आयुर्वेद।",
       "बोलकर या छूकर अपने स्वास्थ्य के बारे में बताने के लिए यहां टैप करें।",
       "या पुराने पर्चे या रिपोर्ट अपलोड करने के लिए पहले यहां टैप करें।",
+      "दोनों कार्य पूरे होने के बाद, डॉक्टर के लिए अपनी अंतिम पीडीएफ सारांश जनरेट करने के लिए यहां टैप करें।",
     ],
   },
   pa: {
@@ -92,6 +109,10 @@ const PT: Record<Lang, {
     interviewCta: "ਸ਼ੁਰੂ ਕਰੋ →",
     uploadTitle: "ਪੁਰਾਣੇ ਦਸਤਾਵੇਜ਼ ਅੱਪਲੋਡ ਕਰੋ", uploadDesc: "ਨੁਸਖੇ, ਲੈਬ ਰਿਪੋਰਟਾਂ, ਜਾਂ ਡਿਸਚਾਰਜ ਸਾਰ।",
     uploadCta: "ਅੱਪਲੋਡ ਕਰੋ →",
+    summaryTitle: "ਅੰਤਿਮ ਮੈਡੀਕਲ ਸਾਰ", summaryDesc: "ਡਾਕਟਰ ਲਈ AI ਇੰਟਰਵਿਊ ਅਤੇ ਦਸਤਾਵੇਜ਼ਾਂ ਨੂੰ ਇੱਕ ਸਾਫ਼ PDF ਵਿੱਚ ਤਿਆਰ ਕਰਦਾ ਹੈ।",
+    summaryCta: "📄 PDF ਡਾਊਨਲੋਡ ਕਰੋ", summaryGenerating: "ਜੈਮਿਨੀ PDF ਬਣਾ ਰਿਹਾ ਹੈ...", summaryLocked: "ਅਨਲੌਕ ਕਰਨ ਲਈ ਉੱਪਰ ਦਿੱਤੇ ਦੋਵੇਂ ਕੰਮ ਪੂਰੇ ਕਰੋ",
+    popupTitle: "ਸਾਰੇ ਕੰਮ ਪੂਰੇ ਹੋ ਗਏ ਹਨ!", popupBody: "ਤੁਸੀਂ AI ਇੰਟਰਵਿਊ ਅਤੇ ਦਸਤਾਵੇਜ਼ ਅੱਪਲੋਡ ਦੋਵੇਂ ਪੂਰੇ ਕਰ ਲਏ ਹਨ। ਹੁਣ ਤੁਸੀਂ ਡਾਕਟਰ ਲਈ ਆਪਣਾ ਅੰਤਿਮ ਸਾਰ ਤਿਆਰ ਕਰ ਸਕਦੇ ਹੋ।",
+    popupClose: "ਬਾਅਦ ਵਿੱਚ", popupGenerate: "PDF ਤਿਆਰ ਕਰੋ",
     footer: "ਤੁਹਾਡਾ ਡਾਟਾ ਤੁਹਾਡੇ ABHA ਰਿਕਾਰਡ ਨਾਲ ਜੁੜਿਆ ਹੈ ਅਤੇ ਫੇਰੀ ਤੋਂ ਬਾਅਦ ਇਸ ਕਿਓਸਕ ਤੋਂ ਹਟਾ ਦਿੱਤਾ ਜਾਂਦਾ ਹੈ।",
     audioTourBtn: "🔊 ਆਡੀਓ ਟੂਰ", logoutBtn: "ਲਾਗਆਉਟ",
     tourPromptTitle: "ਕੀ ਤੁਸੀਂ ਆਡੀਓ ਗਾਈਡ ਚਾਹੋਗੇ?", tourPromptBody: "ਅਸੀਂ ਆਵਾਜ਼ ਅਤੇ ਹਾਈਲਾਈਟ ਨਾਲ ਇਹ ਪੇਜ ਸਮਝਾ ਸਕਦੇ ਹਾਂ।",
@@ -103,6 +124,7 @@ const PT: Record<Lang, {
       "ਇਸ ਤੋਂ ਬਾਅਦ ਚੁਣੋ ਕਿ ਇਹ ਸਧਾਰਨ ਦਵਾਈ ਹੈ ਜਾਂ ਆਯੁਰਵੇਦ।",
       "ਬੋਲ ਕੇ ਜਾਂ ਛੂਹ ਕੇ ਆਪਣੀ ਸਿਹਤ ਬਾਰੇ ਦੱਸਣ ਲਈ ਇੱਥੇ ਟੈਪ ਕਰੋ।",
       "ਜਾਂ ਪੁਰਾਣੇ ਨੁਸਖੇ ਜਾਂ ਰਿਪੋਰਟਾਂ ਅੱਪਲੋਡ ਕਰਨ ਲਈ ਪਹਿਲਾਂ ਇੱਥੇ ਟੈਪ ਕਰੋ।",
+      "ਦੋਵੇਂ ਕੰਮ ਪੂਰੇ ਹੋਣ ਤੋਂ ਬਾਅਦ, ਡਾਕਟਰ ਲਈ ਆਪਣੀ ਅੰਤਿਮ PDF ਤਿਆਰ ਕਰਨ ਲਈ ਇੱਥੇ ਟੈਪ ਕਰੋ।",
     ],
   },
   ta: {
@@ -118,6 +140,10 @@ const PT: Record<Lang, {
     interviewCta: "தொடங்கு →",
     uploadTitle: "பழைய ஆவணங்களைப் பதிவேற்றவும்", uploadDesc: "மருந்துச் சீட்டுகள், லேப் அறிக்கைகள், அல்லது டிஸ்சார்ஜ் சுருக்கங்கள்.",
     uploadCta: "பதிவேற்று →",
+    summaryTitle: "இறுதி மருத்துவ சுருக்கம்", summaryDesc: "மருத்துவருக்காக உங்கள் AI நேர்காணல் மற்றும் ஆவணங்களை ஒரு சுத்தமான PDF ஆக தொகுக்கிறது.",
+    summaryCta: "📄 PDF பதிவிறக்கு", summaryGenerating: "ஜெமினி PDF ஐ உருவாக்குகிறது...", summaryLocked: "திறக்க மேலே உள்ள இரண்டு பணிகளையும் முடிக்கவும்",
+    popupTitle: "அனைத்து பணிகளும் முடிந்தது!", popupBody: "நீங்கள் AI நேர்காணல் மற்றும் ஆவணப் பதிவேற்றம் இரண்டையும் முடித்துவிட்டீர்கள். இப்போது மருத்துவருக்கான உங்கள் இறுதிச் சுருக்கத்தை உருவாக்கலாம்.",
+    popupClose: "பிறகு", popupGenerate: "PDF உருவாக்கு",
     footer: "உங்கள் தரவு உங்கள் ABHA பதிவுடன் இணைக்கப்பட்டுள்ளது, வருகைக்குப் பிறகு இந்த கியோஸ்கிலிருந்து அழிக்கப்படும்.",
     audioTourBtn: "🔊 ஆடியோ சுற்றுலா", logoutBtn: "வெளியேறு",
     tourPromptTitle: "நீங்கள் ஆடியோ வழிகாட்டி விரும்புகிறீர்களா?", tourPromptBody: "குரல் விளக்கம் மற்றும் சிறப்பம்சத்துடன் இந்தப் பக்கத்தை நாங்கள் விளக்கலாம்.",
@@ -129,6 +155,7 @@ const PT: Record<Lang, {
       "அடுத்து, இது பொது மருத்துவமா அல்லது ஆயுர்வேதமா என்பதைத் தேர்ந்தெடுக்கவும்.",
       "பேசி அல்லது தொட்டு உங்கள் ஆரோக்கியத்தைப் பற்றி கூற இங்கே தட்டவும்.",
       "அல்லது பழைய மருந்துச் சீட்டுகளை பதிவேற்ற முதலில் இங்கே தட்டவும்.",
+      "இரண்டும் முடிந்ததும், மருத்துவருக்கான உங்கள் இறுதி PDF சுருக்கத்தை உருவாக்க இங்கே தட்டவும்.",
     ],
   },
   bn: {
@@ -144,6 +171,10 @@ const PT: Record<Lang, {
     interviewCta: "শুরু করুন →",
     uploadTitle: "পুরনো নথি আপলোড করুন", uploadDesc: "প্রেসক্রিপশন, ল্যাব রিপোর্ট, বা ডিসচার্জ সারসংক্ষেপ।",
     uploadCta: "আপলোড করুন →",
+    summaryTitle: "চূড়ান্ত চিকিৎসা সারসংক্ষেপ", summaryDesc: "ডাক্তারের জন্য আপনার এআই ইন্টারভিউ এবং নথিগুলি একটি পরিষ্কার পিডিএফে তৈরি করে।",
+    summaryCta: "📄 পিডিএফ ডাউনলোড করুন", summaryGenerating: "জেমিনি পিডিএফ তৈরি করছে...", summaryLocked: "আনলক করতে উপরের দুটি কাজই সম্পন্ন করুন",
+    popupTitle: "সব কাজ সম্পন্ন হয়েছে!", popupBody: "আপনি এআই ইন্টারভিউ এবং নথি আপলোড উভয়ই সম্পন্ন করেছেন। আপনি এখন ডাক্তারের জন্য আপনার চূড়ান্ত সারসংক্ষেপ তৈরি করতে পারেন।",
+    popupClose: "পরে", popupGenerate: "পিডিএফ তৈরি করুন",
     footer: "আপনার তথ্য আপনার ABHA রেকর্ডের সাথে যুক্ত এবং ভিজিটের পরে এই কিয়স্ক থেকে মুছে ফেলা হয়।",
     audioTourBtn: "🔊 অডিও ট্যুর", logoutBtn: "লগআউট",
     tourPromptTitle: "আপনি কি অডিও গাইড চান?", tourPromptBody: "আমরা কণ্ঠস্বর ও হাইলাইট দিয়ে এই পাতাটি বুঝিয়ে দিতে পারি।",
@@ -155,12 +186,13 @@ const PT: Record<Lang, {
       "এরপর বেছে নিন এটি সাধারণ চিকিৎসা নাকি আয়ুর্বেদ।",
       "বলে বা স্পর্শ করে আপনার স্বাস্থ্য সম্পর্কে বলতে এখানে ট্যাপ করুন।",
       "অথবা পুরনো প্রেসক্রিপশন আপলোড করতে প্রথমে এখানে ট্যাপ করুন।",
+      "উভয় কাজ শেষ হলে, ডাক্তারের জন্য আপনার চূড়ান্ত পিডিএফ সারসংক্ষেপ তৈরি করতে এখানে ট্যাপ করুন।",
     ],
   },
 };
 
-const FONT: Record<Lang, string> = { en: "var(--font-body)", hi: "var(--font-hi)", pa: "var(--font-pa)", ta: "var(--font-ta)", bn: "var(--font-bn)" };
-const DISPLAY_FONT: Record<Lang, string> = { en: "var(--font-display)", hi: "var(--font-hi)", pa: "var(--font-pa)", ta: "var(--font-ta)", bn: "var(--font-bn)" };
+const FONT: Record<string, string> = { en: "var(--font-body)", hi: "var(--font-hi)", pa: "var(--font-pa)", ta: "var(--font-ta)", bn: "var(--font-bn)" };
+const DISPLAY_FONT: Record<string, string> = { en: "var(--font-display)", hi: "var(--font-hi)", pa: "var(--font-pa)", ta: "var(--font-ta)", bn: "var(--font-bn)" };
 
 export default function PatientHome() {
   const { patient, ready, logout, idleWarningVisible, secondsLeft, stayLoggedIn } = useRequireAuth();
@@ -172,6 +204,13 @@ export default function PatientHome() {
   const [showEmergency, setShowEmergency] = useState(false);
   const [emergencySent, setEmergencySent] = useState(false);
 
+  // ---------- Progress & Final Summary State ----------
+  const [hasAiSummary, setHasAiSummary] = useState(false);
+  const [hasDocs, setHasDocs] = useState(false);
+  const [showSummaryPopup, setShowSummaryPopup] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  // ---------- Tour State ----------
   const [tourPromptOpen, setTourPromptOpen] = useState(false);
   const [tourActive, setTourActive] = useState(false);
   const [tourStep, setTourStep] = useState(0);
@@ -182,6 +221,13 @@ export default function PatientHome() {
   const departmentRef = useRef<HTMLDivElement>(null);
   const interviewRef = useRef<HTMLAnchorElement>(null);
   const uploadRef = useRef<HTMLAnchorElement>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
+
+  // Safe fallback resolution for translation content & fonts
+  const baseLangKey = (lang || "en").toLowerCase().split("-")[0];
+  const t: TranslationContent = PT[baseLangKey] || PT[lang] || PT.en;
+  const bodyFont = { fontFamily: FONT[baseLangKey] || FONT[lang] || FONT.en };
+  const displayFont = { fontFamily: DISPLAY_FONT[baseLangKey] || DISPLAY_FONT[lang] || DISPLAY_FONT.en };
 
   function getTargetEl(step: number): HTMLElement | null {
     switch (TOUR_TARGETS[step]) {
@@ -190,6 +236,7 @@ export default function PatientHome() {
       case "department": return departmentRef.current;
       case "interview": return interviewRef.current;
       case "upload": return uploadRef.current;
+      case "summary": return summaryRef.current;
       default: return null;
     }
   }
@@ -197,9 +244,9 @@ export default function PatientHome() {
   function handleLangChange(newLang: Lang) {
     setLang(newLang);
     localStorage.setItem("medikiosk-lang", newLang);
+    window.dispatchEvent(new Event("languageChange"));
   }
 
-  // Safely format ABHA or reference ID if present
   function formatAbhaNumber(num?: string) {
     if (!num) return null;
     const clean = num.replace(/\D/g, "");
@@ -210,16 +257,41 @@ export default function PatientHome() {
   }
 
   useEffect(() => {
-    const savedLang = localStorage.getItem("medikiosk-lang") as Lang | null;
-    if (savedLang) setLang(savedLang);
+    const syncLang = () => {
+      const savedLang = (localStorage.getItem("medikiosk-lang") || "en") as Lang;
+      setLang(savedLang);
+    };
+    syncLang();
+    window.addEventListener("storage", syncLang);
+    window.addEventListener("languageChange", syncLang);
+
     if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.getVoices();
     const dismissed = localStorage.getItem(TOUR_DISMISSED_KEY);
     if (!dismissed) setTourPromptOpen(true);
+
+    return () => {
+      window.removeEventListener("storage", syncLang);
+      window.removeEventListener("languageChange", syncLang);
+    };
   }, []);
 
-  useEffect(() => () => stopSpeaking(), []);
+  // ---------- Task completion check effect ----------
+  useEffect(() => {
+    if (!ready) return;
 
-  const t = PT[lang];
+    const aiDone = !!localStorage.getItem("ai_summary");
+    const docsDone = !!localStorage.getItem("doc_summary") || !!localStorage.getItem("documents_uploaded");
+
+    setHasAiSummary(aiDone);
+    setHasDocs(docsDone);
+
+    if (aiDone && docsDone && !sessionStorage.getItem("summary_popup_shown")) {
+      setShowSummaryPopup(true);
+      sessionStorage.setItem("summary_popup_shown", "true");
+    }
+  }, [ready]);
+
+  useEffect(() => () => stopSpeaking(), []);
 
   useEffect(() => {
     if (!tourActive) return;
@@ -234,7 +306,8 @@ export default function PatientHome() {
       } else {
         setSpotlight(null);
       }
-      speak(t.tourSteps[tourStep], lang);
+      const stepText = t.tourSteps?.[tourStep] || PT.en.tourSteps[tourStep];
+      speak(stepText, lang);
     }, el ? 450 : 50);
     return () => {
       cancelled = true;
@@ -281,15 +354,62 @@ export default function PatientHome() {
     setSpotlight(null);
   }
 
-  const bodyFont = { fontFamily: FONT[lang] };
-  const displayFont = { fontFamily: DISPLAY_FONT[lang] };
-
   function guardedNav(e: React.MouseEvent) {
     if (!consented) {
       e.preventDefault();
       setConsentError(t.consentRequired);
     } else {
       localStorage.setItem("medikiosk-department", dept);
+    }
+  }
+
+  // ---------- Generate Final Medical Summary function ----------
+  async function generateFinalSummary() {
+    setIsGenerating(true);
+    setShowSummaryPopup(false);
+
+    try {
+      const aiSummaryText = localStorage.getItem("ai_summary") || "No AI intake history recorded.";
+      const docSummaryText = localStorage.getItem("doc_summary") || "No documents uploaded.";
+      const selectedDept = localStorage.getItem("medikiosk-department") || dept;
+
+      // Expecting the backend API to synthesize via Gemini AND generate a PDF blob
+      const res = await fetch(`${BACKEND_URL}/api/report/generate-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientId: patient?.patient_id,
+          patientName: patient?.full_name || "Patient",
+          department: selectedDept,
+          aiSummary: aiSummaryText,
+          docSummary: docSummaryText,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to generate report from backend");
+      }
+
+      // Convert the response to a Blob (PDF file)
+      const blob = await res.blob();
+      
+      // Create a temporary object URL and trigger download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `Medical_Summary_${patient?.full_name?.replace(/\s+/g, '_') || "Patient"}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      
+      // Clean up the DOM and URL object
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+    } catch (err) {
+      console.error("Failed to generate report:", err);
+      alert("Could not generate summary report. Please try again.");
+    } finally {
+      setIsGenerating(false);
     }
   }
 
@@ -300,6 +420,8 @@ export default function PatientHome() {
       </main>
     );
   }
+
+  const bothCompleted = hasAiSummary && hasDocs;
 
   return (
     <main style={bodyFont} className="min-h-screen bg-[#F3ECDA] text-[#1C2420]">
@@ -315,28 +437,25 @@ export default function PatientHome() {
       </div>
 
       <div className="mx-auto max-w-3xl px-6 py-10">
-        {/* Header Bar with Logo, Language Selector & Actions */}
+        {/* Header Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p style={displayFont} className="text-xl font-semibold">
             Medi<span className="text-[#E9A23F]">Kiosk</span>
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            
-            {/* Language Selector (FIXED: Safely getting the string label out of the object) */}
             <div className="flex items-center rounded-full border border-[#1C2420]/15 bg-white/50 p-1">
               {Object.keys(LANGUAGES).map((key) => {
                 const k = key as Lang;
-                // Grab the actual string value from the object
                 const langData = LANGUAGES[k] as any;
-                // Use native name (like 'हिन्दी') or label ('Hindi') or fallback to key ('hi')
                 const displayLabel = langData?.native || langData?.label || k;
-                
+                const isSelected = baseLangKey === k.toLowerCase().split("-")[0];
+
                 return (
                   <button
                     key={k}
                     onClick={() => handleLangChange(k)}
                     className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                      lang === k ? "bg-[#2F6F63] text-white shadow-sm" : "text-[#1C2420]/70 hover:bg-[#1C2420]/5"
+                      isSelected ? "bg-[#2F6F63] text-white shadow-sm" : "text-[#1C2420]/70 hover:bg-[#1C2420]/5"
                     }`}
                   >
                     {displayLabel}
@@ -447,28 +566,79 @@ export default function PatientHome() {
             ref={interviewRef}
             href="/patient-intake"
             onClick={guardedNav}
-            className={`rounded-2xl border p-6 transition ${
+            className={`relative overflow-hidden rounded-2xl border p-6 transition ${
               consented ? "border-[#1C2420]/10 bg-[#10241F] text-[#F3ECDA] hover:opacity-90" : "border-[#1C2420]/10 bg-[#10241F]/40 text-[#F3ECDA]/60"
             }`}
           >
-            <span className="text-2xl">🎙️</span>
+            <div className="flex items-center justify-between">
+              <span className="text-2xl">🎙️</span>
+              {hasAiSummary && (
+                <span className="rounded-full bg-[#E9A23F]/20 px-2.5 py-0.5 text-xs font-bold text-[#E9A23F]">
+                  ✓ Completed
+                </span>
+              )}
+            </div>
             <h3 style={displayFont} className="mt-3 text-lg font-medium">{t.interviewTitle}</h3>
             <p className="mt-1 text-sm opacity-80">{t.interviewDesc}</p>
             <p className="mt-4 text-sm font-semibold text-[#E9A23F]">{t.interviewCta}</p>
           </Link>
+
           <Link
             ref={uploadRef}
             href="/document-upload"
             onClick={guardedNav}
-            className={`rounded-2xl border p-6 transition ${
+            className={`relative overflow-hidden rounded-2xl border p-6 transition ${
               consented ? "border-[#1C2420]/10 bg-white hover:border-[#2F6F63]" : "border-[#1C2420]/10 bg-white/40"
             }`}
           >
-            <span className="text-2xl">📄</span>
+            <div className="flex items-center justify-between">
+              <span className="text-2xl">📄</span>
+              {hasDocs && (
+                <span className="rounded-full bg-[#2F6F63]/15 px-2.5 py-0.5 text-xs font-bold text-[#2F6F63]">
+                  ✓ Completed
+                </span>
+              )}
+            </div>
             <h3 style={displayFont} className="mt-3 text-lg font-medium">{t.uploadTitle}</h3>
             <p className="mt-1 text-sm text-[#1C2420]/60">{t.uploadDesc}</p>
             <p className="mt-4 text-sm font-semibold text-[#2F6F63]">{t.uploadCta}</p>
           </Link>
+        </div>
+
+        {/* Final Summary Tile */}
+        <div
+          ref={summaryRef}
+          className={`mt-6 rounded-2xl border p-6 transition-all ${
+            bothCompleted
+              ? "border-[#2F6F63]/30 bg-[#10241F] text-[#F3ECDA] shadow-md"
+              : "border-[#1C2420]/10 bg-white/40 opacity-70"
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">📜</span>
+                <h3 style={displayFont} className="text-lg font-medium">
+                  {t.summaryTitle}
+                </h3>
+              </div>
+              <p className={`mt-1 text-sm ${bothCompleted ? "text-[#B9CFC4]" : "text-[#1C2420]/60"}`}>
+                {t.summaryDesc}
+              </p>
+            </div>
+
+            <button
+              disabled={!bothCompleted || isGenerating}
+              onClick={generateFinalSummary}
+              className="whitespace-nowrap rounded-full bg-[#E9A23F] px-6 py-3 text-sm font-semibold text-[#10241F] transition hover:bg-[#C97F28] disabled:cursor-not-allowed disabled:bg-gray-400 disabled:text-gray-200"
+            >
+              {isGenerating
+                ? t.summaryGenerating
+                : bothCompleted
+                ? t.summaryCta
+                : t.summaryLocked}
+            </button>
+          </div>
         </div>
 
         <p className="mt-8 text-center text-xs text-[#1C2420]/50">{t.footer}</p>
@@ -507,10 +677,37 @@ export default function PatientHome() {
         </div>
       )}
 
+      {/* Task Completion Modal Popup */}
+      {showSummaryPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
+          <div style={bodyFont} className="w-full max-w-md animate-[fadeIn_0.3s_ease] rounded-2xl border border-[#B9CFC4]/20 bg-[#10241F] p-6 text-center text-[#F3ECDA] shadow-2xl">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[#E9A23F]/20 text-3xl">
+              🎉
+            </div>
+            <h3 style={displayFont} className="text-xl font-semibold text-[#F3ECDA]">{t.popupTitle}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-[#B9CFC4]">{t.popupBody}</p>
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowSummaryPopup(false)}
+                className="flex-1 rounded-full border border-[#B9CFC4]/30 py-2.5 text-sm font-medium text-[#B9CFC4] hover:bg-white/5"
+              >
+                {t.popupClose}
+              </button>
+              <button
+                onClick={generateFinalSummary}
+                className="flex-1 rounded-full bg-[#E9A23F] py-2.5 text-sm font-semibold text-[#10241F] hover:bg-[#C97F28]"
+              >
+                {t.popupGenerate}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tour prompt modal */}
       {tourPromptOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6">
-          <div style={bodyFont} className="w-full max-w-sm rounded-2xl bg-white p-6 text-center">
+          <div style={bodyFont} className="w-full max-w-sm rounded-2xl bg-white p-6 text-center text-[#1C2420]">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#E9A23F]/15 text-2xl text-[#E9A23F]">🔊</div>
             <h3 style={displayFont} className="mt-4 text-lg font-medium">{t.tourPromptTitle}</h3>
             <p className="mt-2 text-sm text-[#1C2420]/70">{t.tourPromptBody}</p>
@@ -550,7 +747,7 @@ export default function PatientHome() {
           <div className="mx-auto flex max-w-3xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#E9A23F]/20 text-[#E9A23F]">🔊</span>
-              <p className="text-sm">{t.tourSteps[tourStep]}</p>
+              <p className="text-sm">{t.tourSteps?.[tourStep] || PT.en.tourSteps[tourStep]}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
               <button

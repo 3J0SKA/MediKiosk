@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { get, set } from 'idb-keyval';
 
 declare global {
   interface Window {
@@ -26,6 +27,7 @@ interface Message {
   sender: "ai" | "user";
   text: string;
   audio?: string;
+  isAudioLoading?: boolean;
 }
 
 export default function PatientIntakeChat() {
@@ -59,7 +61,6 @@ export default function PatientIntakeChat() {
 
     setPatientId(loggedInUser);
 
-    // Restore previous chat history if available
     const savedHistory = localStorage.getItem("chat_history");
     if (savedHistory) {
       try {
@@ -80,14 +81,17 @@ export default function PatientIntakeChat() {
     }
   }, []);
 
-  // PERSIST CHAT MESSAGES TO LOCALSTORAGE
-  useEffect(() => {
-    if (mounted && messages.length > 0) {
-      localStorage.setItem("chat_history", JSON.stringify(messages));
+useEffect(() => {
+    if (typeof window === "undefined" || !mounted) return;
+    
+    if (messages.length > 0) {
+      // IndexedDB is async, so we just let it run in the background
+      set("chat_history", messages).catch((err) => 
+        console.error("IndexedDB save failed:", err)
+      );
     }
   }, [messages, mounted]);
 
-  // Initialize Speech Recognition
   useEffect(() => {
     if (typeof window === "undefined" || !mounted) return;
 
@@ -184,25 +188,60 @@ export default function PatientIntakeChat() {
     setLoading(true);
 
     try {
+      // 1. FAST REQUEST: Get Text Only
+      // NOTE: Your Flask backend MUST NOT generate audio during this request.
       const res = await fetch("http://127.0.0.1:5000/api/chat/intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: currentInput, prompt: currentInput, lang }),
+        // Passing a flag in case you want to handle the split conditionally in Python
+        body: JSON.stringify({ message: currentInput, prompt: currentInput, lang, textOnly: true }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
-
+      const aiMsgId = (Date.now() + 1).toString();
+      
       const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: aiMsgId,
         sender: "ai",
         text: data.reply || "Thank you for sharing. Could you tell me more?",
-        audio: data.audio,
+        isAudioLoading: true, // Show the loading spinner for the speaker icon
       };
-      setMessages((prev) => [...prev, aiMsg]);
 
-      playAudio(data.audio);
+      // IMMEDIATELY render the text response and hide the main "thinking" state
+      setMessages((prev) => [...prev, aiMsg]);
+      setLoading(false);
+
+      // 2. BACKGROUND REQUEST: Fetch TTS Audio separately
+      fetch("http://127.0.0.1:5000/api/chat/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: aiMsg.text, lang }),
+      })
+        .then((res) => res.json())
+        .then((audioData) => {
+          // Update the specific message to remove the spinner and attach the audio
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === aiMsgId
+                ? { ...msg, audio: audioData.audio, isAudioLoading: false }
+                : msg
+            )
+          );
+          // Auto-play once it arrives
+          if (audioData.audio) playAudio(audioData.audio);
+        })
+        .catch((err) => {
+          console.error("TTS generation failed:", err);
+          // Remove the loading spinner if audio fails so it doesn't spin forever
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === aiMsgId ? { ...msg, isAudioLoading: false } : msg
+            )
+          );
+        });
+
     } catch (err) {
       console.error("Intake chat error:", err);
       setMessages((prev) => [
@@ -213,7 +252,6 @@ export default function PatientIntakeChat() {
           text: "Sorry, I had trouble processing that. Could you try rephrasing?",
         },
       ]);
-    } finally {
       setLoading(false);
     }
   }
@@ -238,7 +276,6 @@ export default function PatientIntakeChat() {
 
       const data = await res.json().catch(() => ({}));
 
-      // Generate structured summary from backend response or synthesize from chat messages
       const summaryContent =
         data.summary ||
         data.report ||
@@ -248,19 +285,15 @@ export default function PatientIntakeChat() {
             .map((m, idx) => `${idx + 1}. ${m.text}`)
             .join("\n");
 
-      // Save summary across all potential local storage keys for maximum compatibility
       localStorage.setItem("ai_summary", summaryContent);
       localStorage.setItem("medikiosk_summary", summaryContent);
       localStorage.setItem("patient_summary", summaryContent);
 
       alert("Intake saved successfully! Summary generated.");
-      
-      // Navigate to summary preview screen
       router.push("/patient-summary");
     } catch (err) {
       console.error("Error saving intake to DB:", err);
       
-      // Fallback save locally if backend fails
       const fallbackSummary =
         `PATIENT SYMPTOM SUMMARY (OFFLINE)\n---------------------------------\n` +
         messages
@@ -353,19 +386,31 @@ export default function PatientIntakeChat() {
               className={`relative max-w-[80%] rounded-2xl px-5 py-3.5 text-sm leading-relaxed shadow-sm ${
                 msg.sender === "user"
                   ? "bg-[#10241F] text-[#F3ECDA] rounded-tr-none"
-                  : "border border-[#1C2420]/10 bg-white text-[#1C2420] rounded-tl-none pr-12"
+                  : "border border-[#1C2420]/10 bg-white text-[#1C2420] rounded-tl-none pr-14"
               }`}
             >
               {msg.text}
 
-              {msg.sender === "ai" && msg.audio && (
-                <button
-                  onClick={() => playAudio(msg.audio)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-[#2F6F63]/10 p-2 text-[#2F6F63] transition hover:bg-[#2F6F63]/20"
-                  title="Replay Audio"
-                >
-                  🔊
-                </button>
+              {/* Dynamic Audio Indicator / Play Button */}
+              {msg.sender === "ai" && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
+                  {msg.isAudioLoading ? (
+                    <span
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2F6F63]/5"
+                      title="Generating Audio..."
+                    >
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#2F6F63] border-t-transparent" />
+                    </span>
+                  ) : msg.audio ? (
+                    <button
+                      onClick={() => playAudio(msg.audio)}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2F6F63]/10 text-sm text-[#2F6F63] transition hover:bg-[#2F6F63]/20"
+                      title="Replay Audio"
+                    >
+                      🔊
+                    </button>
+                  ) : null}
+                </div>
               )}
             </div>
           </div>

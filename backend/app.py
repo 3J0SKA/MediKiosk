@@ -19,13 +19,15 @@ from flask_cors import CORS
 
 import torch
 import soundfile as sf
-from flask import Flask, request, jsonify, g, send_file
-from flask_cors import CORS
+from gtts import gTTS
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import google.generativeai as genai
+from report_synthesizer import synthesize_structured_summary
+from pdf_report import generate_summary_pdf
+from report_synthesizer import synthesize_structured_summary, compute_priority
 
 # Local modules
 import gemini_service
@@ -48,8 +50,9 @@ api_key = os.getenv("GEMINI_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
 
+
 def generate_fast_audio(text: str, lang: str = "en") -> str:
-    """Generates audio 100% in RAM with zero disk I/O."""
+    """Generates audio 100% in RAM with zero disk I/O as a fallback."""
     if not text.strip():
         text = "Please tell me more about your symptoms."
 
@@ -66,9 +69,11 @@ def generate_fast_audio(text: str, lang: str = "en") -> str:
         print(f"TTS Generation Error: {e}")
         return ""
 
+
 @app.route("/")
 def index():
     return "Backend is running!"
+
 
 # Global rate limiting
 limiter = Limiter(
@@ -80,8 +85,10 @@ limiter = Limiter(
 
 os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
 
+
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in Config.ALLOWED_EXTENSIONS
+
 
 # Real file-content signatures
 FILE_SIGNATURES = {
@@ -91,6 +98,7 @@ FILE_SIGNATURES = {
     "pdf": [b"%PDF-"],
 }
 
+
 def verify_file_signature(file_stream, extension: str) -> bool:
     signatures = FILE_SIGNATURES.get(extension)
     if not signatures:
@@ -99,12 +107,82 @@ def verify_file_signature(file_stream, extension: str) -> bool:
     file_stream.seek(0)
     return any(header.startswith(sig) for sig in signatures)
 
+
 MAX_DOCUMENTS_PER_PATIENT = 30
 
 
 # =====================================================================
 # AUTH — Mock ABHA/Aadhaar login (OTP-based)
 # =====================================================================
+
+@app.route("/api/report/generate-pdf", methods=["POST"])
+def generate_pdf_report():
+    data = request.get_json(force=True) or {}
+
+    patient_id = data.get("patientId")
+    patient_name = data.get("patientName", "Patient")
+    department = data.get("department", "General Medicine")
+    ai_summary = data.get("aiSummary", "")
+    doc_summary = data.get("docSummary", "")
+
+    try:
+        structured = synthesize_structured_summary(ai_summary, doc_summary)
+    except RuntimeError as e:
+        print(f"[report] synthesis failed, falling back to minimal structure: {e}")
+        structured = {
+            "chief_complaint": None,
+            "history_of_present_illness": ai_summary or "Could not synthesize — raw text below.",
+            "symptoms": [], "onset_duration": None, "severity": None,
+            "current_medications": [], "past_medical_history": [],
+            "abnormal_lab_findings": [], "allergies": [], "red_flags": [],
+            "physician_notes": doc_summary or None,
+        }
+
+    priority = compute_priority(structured)
+
+    if patient_id:
+        try:
+            db.execute(
+                """
+                INSERT INTO final_summaries
+                    (patient_id, chief_complaint, priority, structured_json, ai_summary_raw, doc_summary_raw)
+                VALUES (%s,%s,%s,%s,%s,%s)
+                ON DUPLICATE KEY UPDATE
+                    chief_complaint=VALUES(chief_complaint),
+                    priority=VALUES(priority),
+                    structured_json=VALUES(structured_json),
+                    ai_summary_raw=VALUES(ai_summary_raw),
+                    doc_summary_raw=VALUES(doc_summary_raw),
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (
+                    patient_id,
+                    structured.get("chief_complaint"),
+                    priority,
+                    json_lib.dumps(structured),
+                    ai_summary,
+                    doc_summary,
+                ),
+            )
+        except Exception as e:
+            print(f"[report] failed to save final_summaries row: {e}")  # PDF still generates even if this fails
+
+    try:
+        pdf_bytes = generate_summary_pdf(
+            patient_name=patient_name, patient_id=patient_id,
+            department=department, structured=structured,
+        )
+    except Exception as e:
+        print(f"[pdf] generation failed: {e}")
+        return jsonify({"error": f"PDF generation failed: {e}"}), 500
+
+    return (
+        pdf_bytes, 200,
+        {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": f'attachment; filename="Medical_Summary_{patient_name.replace(" ", "_")}.pdf"',
+        },
+    )
 
 @app.route("/api/auth/request-otp", methods=["POST"])
 @limiter.limit("5 per minute")
@@ -120,7 +198,7 @@ def request_otp():
         (aadhaar_id,),
         fetchone=True
     )
-    print(f"[MOCK OTP] Sending OTP 123456 to ID {aadhaar_id}")
+    print("[MOCK OTP] Sending OTP 123456 to requested ID")
     return jsonify({"exists": existing is not None})
 
 
@@ -168,7 +246,7 @@ def verify_otp():
         """,
         (aadhaar_id, full_name, age, data.get("gender", "O"), data.get("phone"), data.get("preferred_lang", "en")),
     )
-    
+
     patient = db.query("SELECT * FROM patients WHERE patient_id=%s", (patient_id,), fetchone=True)
     token = auth_utils.generate_token(patient_id, aadhaar_id)
 
@@ -178,6 +256,69 @@ def verify_otp():
 # =====================================================================
 # MODULE D — Patient Identification & Consent
 # =====================================================================
+
+@app.route("/api/physician/patients", methods=["GET"])
+def list_physician_patients():
+    """
+    All patients who have a completed final summary, newest first,
+    for the physician queue.
+    """
+    rows = db.query(
+        """
+        SELECT p.patient_id, p.full_name, p.age, p.gender, p.preferred_lang,
+               fs.chief_complaint, fs.priority, fs.updated_at
+        FROM final_summaries fs
+        JOIN patients p ON p.patient_id = fs.patient_id
+        ORDER BY
+            FIELD(fs.priority, 'high', 'medium', 'low'),
+            fs.updated_at DESC
+        """
+    )
+    for r in rows:
+        r["updated_at"] = r["updated_at"].isoformat() if r["updated_at"] else None
+    return jsonify(rows)
+
+
+@app.route("/api/physician/patients/<int:patient_id>", methods=["GET"])
+def get_physician_patient_detail(patient_id):
+    """Full structured summary + document list for one patient."""
+    patient = db.query("SELECT * FROM patients WHERE patient_id=%s", (patient_id,), fetchone=True)
+    if not patient:
+        return jsonify({"error": "not found"}), 404
+
+    summary_row = db.query(
+        "SELECT * FROM final_summaries WHERE patient_id=%s", (patient_id,), fetchone=True
+    )
+    structured = json_lib.loads(summary_row["structured_json"]) if summary_row else None
+
+    docs = db.query(
+        """
+        SELECT document_id, doc_type, document_date, uploaded_at
+        FROM documents WHERE patient_id=%s
+        ORDER BY uploaded_at DESC
+        """,
+        (patient_id,),
+    )
+    for d in docs:
+        d["uploaded_at"] = d["uploaded_at"].isoformat() if d["uploaded_at"] else None
+        d["document_date"] = d["document_date"].isoformat() if d["document_date"] else None
+
+    return jsonify({
+        "patient": patient,
+        "priority": summary_row["priority"] if summary_row else None,
+        "chief_complaint": summary_row["chief_complaint"] if summary_row else None,
+        "structured_summary": structured,
+        "documents": docs,
+    })
+
+
+@app.route("/api/physician/documents/<int:document_id>/file", methods=["GET"])
+def get_physician_document_file(document_id):
+    """Physician-side file view — no patient-ownership check (physician auth TODO)."""
+    doc = db.query("SELECT * FROM documents WHERE document_id=%s", (document_id,), fetchone=True)
+    if not doc or not os.path.exists(doc["file_path"]):
+        return jsonify({"error": "not found"}), 404
+    return send_file(doc["file_path"])
 
 @app.route("/api/patients/register", methods=["POST"])
 def register_patient():
@@ -203,7 +344,7 @@ def register_patient():
             (abha_id, full_name, age, gender, phone, preferred_lang, department, consent_given, consent_time)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
-        (data.get("abha_id"), data["full_name"], data.get("age"), data.get("gender", "O"), data.get("phone"), 
+        (data.get("abha_id"), data["full_name"], data.get("age"), data.get("gender", "O"), data.get("phone"),
          data.get("preferred_lang", "en"), data.get("department"), bool(data.get("consent_given", False)), consent_time),
     )
 
@@ -389,7 +530,7 @@ def summarize_all_documents(patient_id):
     force = request.args.get("force", "false").lower() == "true"
     docs = db.query("SELECT * FROM documents WHERE patient_id=%s ORDER BY uploaded_at DESC", (patient_id,))
     results = []
-    
+
     for doc in docs:
         document_id = doc["document_id"]
         entry = {"document_id": document_id, "doc_type": doc["doc_type"]}
@@ -572,7 +713,7 @@ def summarize_single_document(document_id):
 
 
 # =====================================================================
-# AI INTAKE CHAT ENDPOINT
+# AI INTAKE CHAT & DECOUPLED TTS ENDPOINTS
 # =====================================================================
 
 INTAKE_SYSTEM_PROMPT = (
@@ -601,7 +742,7 @@ try:
     tts_model = ParlerTTSForConditionalGeneration.from_pretrained(
         "ai4bharat/indic-parler-tts", token=hf_token
     ).to(device)
-    
+
     tokenizer = AutoTokenizer.from_pretrained("ai4bharat/indic-parler-tts", token=hf_token)
     description_tokenizer = AutoTokenizer.from_pretrained(
         tts_model.config.text_encoder._name_or_path, token=hf_token
@@ -614,6 +755,7 @@ except Exception as e:
 
 @app.route('/api/chat/intake', methods=['POST'])
 def intake_chat():
+    """Generates text response from Gemini immediately without blocking for TTS."""
     try:
         data = request.get_json(silent=True) or {}
         user_text = data.get('message') or data.get('prompt') or ''
@@ -622,7 +764,6 @@ def intake_chat():
         if not user_text:
             return jsonify({"reply": "Please describe your symptoms."}), 400
 
-        # Map language codes to language names for Gemini
         lang_names = {
             "en": "English",
             "hi": "Hindi",
@@ -632,7 +773,6 @@ def intake_chat():
         }
         target_lang = lang_names.get(lang, "English")
 
-        # --- 1. GET GEMINI RESPONSE IN SELECTED LANGUAGE ---
         model = genai.GenerativeModel('gemini-3.6-flash')
         prompt = (
             f"You are a medical kiosk intake assistant. "
@@ -640,36 +780,56 @@ def intake_chat():
             f"IMPORTANT: Respond entirely in the {target_lang} language.\n"
             f"Patient input: {user_text}"
         )
-        
+
         gemini_response = model.generate_content(prompt)
         ai_text = gemini_response.text
 
-        # --- 2. GENERATE TTS AUDIO (IN-MEMORY RAM BUFFER) ---
-        audio_base64 = None
-        if tts_model:
-            description = "Divya speaks in a clear, expressive voice at a normal pace in a quiet environment with very clear audio quality."
-            
-            input_ids = description_tokenizer(description, return_tensors="pt").input_ids.to(device)
-            prompt_input_ids = tokenizer(ai_text, return_tensors="pt").input_ids.to(device)
-            
-            # Generate waveform on GPU
-            generation = tts_model.generate(input_ids=input_ids, prompt_input_ids=prompt_input_ids)
-            audio_arr = generation.cpu().numpy().squeeze()
-            
-            # Convert waveform to base64 via memory buffer
-            buffer = io.BytesIO()
-            sf.write(buffer, audio_arr, tts_model.config.sampling_rate, format='WAV')
-            buffer.seek(0)
-            audio_base64 = base64.b64encode(buffer.read()).decode('utf-8')
-
+        # Return text instantly to frontend
         return jsonify({
-            "reply": ai_text,
-            "audio": audio_base64
+            "reply": ai_text
         })
 
     except Exception as e:
         print(f"Backend Error: {e}")
         return jsonify({"reply": f"Server Error: {str(e)}"}), 500
+
+
+@app.route('/api/chat/tts', methods=['POST'])
+def generate_tts():
+    """Dedicated endpoint to process heavy TTS generation asynchronously."""
+    try:
+        data = request.get_json(silent=True) or {}
+        text = data.get('text', '')
+        lang = data.get('lang', 'en')
+
+        if not text.strip():
+            return jsonify({"audio": None}), 400
+
+        audio_base64 = None
+
+        if tts_model:
+            description = "Divya speaks in a clear, expressive voice at a normal pace in a quiet environment with very clear audio quality."
+
+            input_ids = description_tokenizer(description, return_tensors="pt").input_ids.to(device)
+            prompt_input_ids = tokenizer(text, return_tensors="pt").input_ids.to(device)
+
+            generation = tts_model.generate(input_ids=input_ids, prompt_input_ids=prompt_input_ids)
+            audio_arr = generation.cpu().numpy().squeeze()
+
+            buffer = io.BytesIO()
+            sf.write(buffer, audio_arr, tts_model.config.sampling_rate, format='WAV')
+            buffer.seek(0)
+            audio_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+        else:
+            # Fallback to fast gTTS if Parler-TTS is unavailable
+            audio_base64 = generate_fast_audio(text, lang)
+
+        return jsonify({"audio": audio_base64})
+
+    except Exception as e:
+        print(f"TTS Route Error: {e}")
+        return jsonify({"audio": None, "error": str(e)}), 500
+
 
 @app.route("/api/intake/complete", methods=["POST"])
 def intake_complete():
@@ -678,8 +838,6 @@ def intake_complete():
     chat_history = data.get("chatHistory", [])
     lang = data.get("lang", "en")
 
-    # TODO: Write chat_history to your database here
-
     print(f"✅ Successfully received intake for patient: {patient_id} ({len(chat_history)} messages)")
 
     return jsonify({
@@ -687,6 +845,7 @@ def intake_complete():
         "message": "Intake saved successfully.",
         "patientId": patient_id
     })
+
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=False)

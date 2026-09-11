@@ -12,6 +12,7 @@ PyJWT==2.9.0
 Flask-Limiter==3.8.0
 google-generativeai==0.8.3
 google-genai>=1.0.0
+reportlab==4.2.5
 
 # TTS & Machine Learning Core
 torch==2.5.1+cu121

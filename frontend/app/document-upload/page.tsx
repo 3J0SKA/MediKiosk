@@ -31,7 +31,7 @@ type SummaryEntry = {
 type TourTarget = "intro" | "docType" | "dropzone" | "docsList" | "summariseAll";
 const TOUR_TARGETS: TourTarget[] = ["intro", "docType", "dropzone", "docsList", "summariseAll"];
 
-const DU: Record<Lang, {
+type TranslationContent = {
   title: string; subtitle: string; back: string;
   docTypeLabel: string; docTypes: Record<DocType, string>;
   dropText: string; dropHint: string; browse: string;
@@ -42,7 +42,9 @@ const DU: Record<Lang, {
   summaryError: string; cachedNote: string; hideAll: string; noResultYet: string; viewCombined: string;
   audioTourBtn: string; tourPromptTitle: string; tourPromptBody: string; tourYes: string; tourNo: string;
   tourPrev: string; tourNext: string; tourEnd: string; tourSteps: string[];
-}> = {
+};
+
+const DU: Record<string, TranslationContent> = {
   en: {
     title: "Upload documents", subtitle: "Add old prescriptions, lab reports, or discharge summaries.", back: "← Back",
     docTypeLabel: "What kind of document is this?",
@@ -173,10 +175,183 @@ const DU: Record<Lang, {
       "সব আপলোড করার পর, নথিগুলো পড়াতে এবং সারসংক্ষেপ করতে এই বোতাম চাপুন।",
     ],
   },
+  te: {
+    title: "డాక్యుమెంట్లను అప్‌లోడ్ చేయండి", subtitle: "పాత ప్రిస్క్రిప్షన్లు, ల్యాబ్ నివేదికలు లేదా డిశ్చార్జ్ సారాంశాలను జోడించండి.", back: "← వెనుకకు",
+    docTypeLabel: "ఇది ఏ రకమైన డాక్యుమెంట్?",
+    docTypes: { prescription: "ప్రిస్క్రిప్షన్", lab_report: "ల్యాబ్ నివేదిక", discharge_summary: "డిశ్చార్జ్ సారాంశం", imaging: "ఇమేజింగ్", other: "ఇతర" },
+    dropText: "ఫైల్‌ను ఇక్కడ లాగండి, లేదా", dropHint: "JPG, PNG, లేదా PDF · గరిష్టంగా 16 MB", browse: "ఫైళ్లను బ్రౌజ్ చేయండి",
+    errorType: "JPG, PNG లేదా PDF ఫైళ్లు మాత్రమే అనుమతించబడతాయి.", errorSize: "ఫైల్ చాలా పెద్దదిగా ఉంది (గరిష్టంగా 16 MB).",
+    errorGeneric: "అప్‌లోడ్ విఫలమైంది. దయచేసి మళ్లీ ప్రయత్నించండి.", uploading: "అప్‌లోడ్ అవుతోంది…",
+    yourDocs: "మీరు అప్‌లోడ్ చేసిన డాక్యుమెంట్లు", noDocs: "ఇంకా ఏ డాక్యుమెంట్లు అప్‌లోడ్ చేయలేదు.",
+    view: "చూడండి", deleteBtn: "తొలగించు",
+    confirmDeleteTitle: "ఈ డాక్యుమెంట్‌ను తొలగించాలా?", confirmDeleteBody: "దీనిని రద్దు చేయలేము.",
+    confirmYes: "తొలగించు", confirmNo: "రద్దు చేయి", uploadedOn: "అప్‌లోడ్ చేయబడింది",
+    summariseAll: "అన్ని డాక్యుమెంట్ల సారాంశం చేయండి", summarising: "డాక్యుమెంట్లు చదవబడుతున్నాయి…", rerunAll: "మళ్లీ రన్ చేయండి",
+    needsReview: "⚠ సమీక్ష అవసరం", summaryError: "ఈ డాక్యుమెంట్‌ను చదవలేకపోయాము.",
+    cachedNote: "సేవ్ చేసిన ఫలితం — కొత్త టోకెన్లు ఉపయోగించబడలేదు.", hideAll: "ఫలితాలను దాచు", noResultYet: "ఇంకా సారాంశం చేయలేదు.",
+    viewCombined: "సంయుక్త సారాంశాన్ని చూడండి →",
+    audioTourBtn: "🔊 ఆడియో టూర్",
+    tourPromptTitle: "మీకు ఆడియో గైడ్ కావాలా?", tourPromptBody: "మేము వాయిస్ వివరిస్తూ ఈ పేజీ ద్వారా మీకు మార్గదర్శకం చేయగలము.",
+    tourYes: "అవును, గైడ్ చేయండి", tourNo: "వద్దు, ధన్యవాదాలు", tourPrev: "◀ వెనుకకు", tourNext: "తరువాత ▶", tourEnd: "టూర్ ముగించు",
+    tourSteps: [
+      "ఇక్కడ మీరు మీ పాత వైద్య డాక్యుమెంట్లను అప్‌లోడ్ చేస్తారు.",
+      "ముందుగా, మీరు ఏ రకమైన డాక్యుమెంట్ అప్‌లోడ్ చేస్తున్నారో ఎంచుకోండి.",
+      "ఆపై ఫైల్‌ను ఇక్కడ లాగండి లేదా మీ పరికరం నుండి ఫోటో లేదా PDFని ఎంచుకోవడానికి నొక్కండి.",
+      "మీరు అప్‌లోడ్ చేసిన ప్రతి డాక్యుమెంట్ ఇక్కడ కనిపించేలా ఉంటుంది.",
+      "అన్నీ అప్‌లోడ్ చేసిన తర్వాత, సారాంశాన్ని పొందడానికి ఈ బటన్‌ను నొక్కండి.",
+    ],
+  },
+  mr: {
+    title: "कागदपत्रे अपलोड करा", subtitle: "जुन्या प्रिस्क्रिप्शन, लॅब रिपोर्ट्स किंवा डिस्चार्ज सारांश जोडा.", back: "← मागे",
+    docTypeLabel: "हे कोणत्या प्रकारचे कागदपत्र आहे?",
+    docTypes: { prescription: "प्रिस्क्रिप्शन", lab_report: "लॅब रिपोर्ट", discharge_summary: "डिस्चार्ज सारांश", imaging: "इमेजिंग", other: "इतर" },
+    dropText: "फाइल येथे ड्रॅग करा, किंवा", dropHint: "JPG, PNG, किंवा PDF · कमाल 16 MB", browse: "फाइली ब्राउझ करा",
+    errorType: "केवळ JPG, PNG, किंवा PDF फाइल्सना अनुमती आहे.", errorSize: "फाइल खूप मोठी आहे (कमाल 16 MB).",
+    errorGeneric: "अपलोड अयशस्वी. कृपया पुन्हा प्रयत्न करा.", uploading: "अपलोड होत आहे…",
+    yourDocs: "तुमची अपलोड केलेली कागदपत्रे", noDocs: "अद्याप कोणतीही कागदपत्रे अपलोड केलेली नाहीत.",
+    view: "पहा", deleteBtn: "हटवा",
+    confirmDeleteTitle: "हे कागदपत्र हटवायचे?", confirmDeleteBody: "हे पूर्ववत केले जाऊ शकत नाही.",
+    confirmYes: "हटवा", confirmNo: "रद्द करा", uploadedOn: "अपलोड केले",
+    summariseAll: "सर्व कागदपत्रांचा सारांश काढा", summarising: "कागदपत्रे वाचली जात आहेत…", rerunAll: "पुन्हा चालवा",
+    needsReview: "⚠ पुनरावलोकन आवश्यक", summaryError: "हे कागदपत्र वाचता आले नाही.",
+    cachedNote: "साठवलेला निकाल — नवीन टोकन वापरले नाहीत.", hideAll: "निकाल लपवा", noResultYet: "अद्याप सारांशित केलेले नाही.",
+    viewCombined: "एकत्रित सारांश पहा →",
+    audioTourBtn: "🔊 ऑडिओ टूर",
+    tourPromptTitle: "तुम्हाला ऑडिओ मार्गदर्शक हवा आहे का?", tourPromptBody: "आम्ही आवाजाद्वारे तुम्हाला या पृष्ठाची माहिती देऊ शकतो.",
+    tourYes: "होय, मार्गदर्शन करा", tourNo: "नको, धन्यवाद", tourPrev: "◀ मागे", tourNext: "पुढे ▶", tourEnd: "टूर समाप्त करा",
+    tourSteps: [
+      "येथे तुम्ही तुमची जुनी वैद्यकीय कागदपत्रे अपलोड करता.",
+      "प्रथम, तुम्ही कोणत्या प्रकारचे कागदपत्र अपलोड करत आहात ते निवडा.",
+      "नंतर फाइल येथे ड्रॅग करा किंवा तुमच्या डिव्हाइसवरून फोटो किंवा PDF निवडा.",
+      "तुम्ही अपलोड केलेले प्रत्येक कागदपत्र येथे दिसते.",
+      "सर्व काही अपलोड केल्यानंतर, सारांश काढण्यासाठी हे बटण दाबा.",
+    ],
+  },
+  gu: {
+    title: "દસ્તાવેજો અપલોડ કરો", subtitle: "જૂના પ્રિસ્ક્રિપ્શન્સ, લેબ રિપોર્ટ્સ, અથવા ડિસ્ચાર્જ સારાંશ ઉમેરો.", back: "← પાછા",
+    docTypeLabel: "આ કયા પ્રકારનો દસ્તાવેજ છે?",
+    docTypes: { prescription: "પ્રિસ્ક્રિપ્શન", lab_report: "લેબ રિપોર્ટ", discharge_summary: "ડિસ્ચાર્જ સારાંશ", imaging: "ઇમેજિંગ", other: "અન્ય" },
+    dropText: "ફાઇલ અહીં ખેંચો, અથવા", dropHint: "JPG, PNG, અથવા PDF · મહત્તમ 16 MB", browse: "ફાઇલો બ્રાઉઝ કરો",
+    errorType: "માત્ર JPG, PNG, અથવા PDF ફાઇલો માન્ય છે.", errorSize: "ફાઇલ ખૂબ મોટી છે (મહત્તમ 16 MB).",
+    errorGeneric: "અપલોડ નિષ્ફળ. કૃપા કરીને ફરી પ્રયાસ કરો.", uploading: "અપલોડ થઈ રહ્યું છે…",
+    yourDocs: "તમારા અપલોડ કરેલા દસ્તાવેજો", noDocs: "હજુ સુધી કોઈ દસ્તાવેજો અપલોડ કર્યા નથી.",
+    view: "જુઓ", deleteBtn: "કાઢી નાખો",
+    confirmDeleteTitle: "આ દસ્તાવેજ કાઢી નાખવો?", confirmDeleteBody: "આ પાછું ખેંચી શકાશે નહીં.",
+    confirmYes: "કાઢી નાખો", confirmNo: "રદ કરો", uploadedOn: "અપલોડ કરાયું",
+    summariseAll: "બધા દસ્તાવેજોનો સારાંશ આપો", summarising: "દસ્તાવેજો વંચાઈ રહ્યા છે…", rerunAll: "ફરીથી ચલાવો",
+    needsReview: "⚠ સમીક્ષા જરૂરી", summaryError: "આ દસ્તાવેજ વાંચી શકાયો નથી.",
+    cachedNote: "સાચવેલું પરિણામ — કોઈ નવા ટોકન ઉપયોગમાં લેવાયા નથી.", hideAll: "પરિણામો છુપાવો", noResultYet: "હજુ સુધી સારાંશ આપ્યો નથી.",
+    viewCombined: "સંયુક્ત સારાંશ જુઓ →",
+    audioTourBtn: "🔊 ઑડિઓ ટૂર",
+    tourPromptTitle: "શું તમને ઑડિઓ ગાઇડ જોઈએ છે?", tourPromptBody: "અમે અવાજ દ્વારા આ પૃષ્ઠ વિશે માર્ગદર્શન આપી શકીએ છીએ.",
+    tourYes: "હા, માર્ગદર્શન આપો", tourNo: "ના, આભાર", tourPrev: "◀ પાછા", tourNext: "આગળ ▶", tourEnd: "ટૂર સમાપ્ત કરો",
+    tourSteps: [
+      "અહીં તમે તમારા જૂના તબીબી દસ્તાવેજો અપલોડ કરો છો.",
+      "પ્રથમ, તમે કયા પ્રકારનો દસ્તાવેજ અપલોડ કરી રહ્યા છો તે પસંદ કરો.",
+      "પછી ફાઇલ અહીં ખેંચો અથવા તમારા ઉપકરણમાંથી ફોટો અથવા PDF પસંદ કરો.",
+      "તમે અપલોડ કરેલો દરેક દસ્તાવેજ અહીં દેખાય છે.",
+      "બધું અપલોડ કર્યા પછી, સારાંશ મેળવવા માટે આ બટન દબાવો.",
+    ],
+  },
+  kn: {
+    title: "ದಾಖಲೆಗಳನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಿ", subtitle: "ಹಳೆಯ ಪ್ರಿಸ್ಕ್ರಿಪ್ಷನ್‌ಗಳು, ಲ್ಯಾಬ್ ವರದಿಗಳು ಅಥವಾ ಡಿಸ್ಚಾರ್ಜ್ ಸಾರಾಂಶಗಳನ್ನು ಸೇರಿಸಿ.", back: "← ಹಿಂತಿರುಗಿ",
+    docTypeLabel: "ಇದು ಯಾವ ರೀತಿಯ ದಾಖಲೆ?",
+    docTypes: { prescription: "ಪ್ರಿಸ್ಕ್ರಿಪ್ಷನ್", lab_report: "ಲ್ಯಾಬ್ ವರದಿ", discharge_summary: "ಡಿಸ್ಚಾರ್ಜ್ ಸಾರಾಂಶ", imaging: "ಇಮೇಜಿಂಗ್", other: "ಇತರ" },
+    dropText: "ಫೈಲ್ ಅನ್ನು ಇಲ್ಲಿ ಎಳೆಯಿರಿ, ಅಥವಾ", dropHint: "JPG, PNG, ಅಥವಾ PDF · ಗರಿಷ್ಠ 16 MB", browse: "ಫೈಲ್‌ಗಳನ್ನು ಬ್ರೌಸ್ ಮಾಡಿ",
+    errorType: "JPG, PNG ಅಥವಾ PDF ಫೈಲ್‌ಗಳಿಗೆ ಮಾತ್ರ ಅನುಮತಿಯಿದೆ.", errorSize: "ಫೈಲ್ ತುಂಬಾ ದೊಡ್ಡದಾಗಿದೆ (ಗರಿಷ್ಠ 16 MB).",
+    errorGeneric: "ಅಪ್‌ಲೋಡ್ ವಿಫಲವಾಗಿದೆ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.", uploading: "ಅಪ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ…",
+    yourDocs: "ನಿಮ್ಮ ಅಪ್‌ಲೋಡ್ ಮಾಡಿದ ದಾಖಲೆಗಳು", noDocs: "ಇನ್ನೂ ಯಾವುದೇ ದಾಖಲೆಗಳನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಲಾಗಿಲ್ಲ.",
+    view: "ನೋಡಿ", deleteBtn: "ಅಳಿಸಿ",
+    confirmDeleteTitle: "ಈ ದಾಖಲೆಯನ್ನು ಅಳಿಸಬೇಕೆ?", confirmDeleteBody: "ಇದನ್ನು ರದ್ದುಗೊಳಿಸಲು ಸಾಧ್ಯವಿಲ್ಲ.",
+    confirmYes: "ಅಳಿಸಿ", confirmNo: "ರದ್ದುಮಾಡಿ", uploadedOn: "ಅಪ್‌ಲೋಡ್ ಮಾಡಲಾಗಿದೆ",
+    summariseAll: "ಎಲ್ಲಾ ದಾಖಲೆಗಳ ಸಾರಾಂಶವನ್ನು ಪಡೆಯಿರಿ", summarising: "ದಾಖಲೆಗಳನ್ನು ಓದಲಾಗುತ್ತಿದೆ…", rerunAll: "ಮತ್ತೆ ರನ್ ಮಾಡಿ",
+    needsReview: "⚠ ಪರಿಶೀಲನೆ ಅಗತ್ಯವಿದೆ", summaryError: "ಈ ದಾಖಲೆಯನ್ನು ಓದಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.",
+    cachedNote: "ಉಳಿಸಿದ ಫಲಿತಾಂಶ — ಯಾವುದೇ ಹೊಸ ಟೋಕನ್‌ಗಳನ್ನು ಬಳಸಲಾಗಿಲ್ಲ.", hideAll: "ಫಲಿತಾಂಶಗಳನ್ನು ಮರೆಮಾಡಿ", noResultYet: "ಇನ್ನೂ ಸಾರಾಂಶಗೊಳಿಸಲಾಗಿಲ್ಲ.",
+    viewCombined: "ಸಂಯೋಜಿತ ಸಾರಾಂಶವನ್ನು ವೀಕ್ಷಿಸಿ →",
+    audioTourBtn: "🔊 ಆಡಿಯೋ ಪ್ರವಾಸ",
+    tourPromptTitle: "ನಿಮಗೆ ಆಡಿಯೋ ಮಾರ್ಗದರ್ಶಿ ಬೇಕೇ?", tourPromptBody: "ಧ್ವನಿ ವಿವರಣೆಯೊಂದಿಗೆ ನಾವು ಈ ಪುಟವನ್ನು ನಿಮಗಾಗಿ ವಿವರಿಸಬಹುದು.",
+    tourYes: "ಹೌದು, ಮಾರ್ಗದರ್ಶನ ನೀಡಿ", tourNo: "ಬೇಡ, ಧನ್ಯವಾದಗಳು", tourPrev: "◀ ಹಿಂತಿರುಗಿ", tourNext: "ಮುಂದೆ ▶", tourEnd: "ಪ್ರವಾಸ ಮುಗಿಸಿ",
+    tourSteps: [
+      "ಇಲ್ಲಿ ನೀವು ನಿಮ್ಮ ಹಳೆಯ ವೈದ್ಯಕೀಯ ದಾಖಲೆಗಳನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡುತ್ತೀರಿ.",
+      "ಮೊದಲು, ನೀವು ಯಾವ ರೀತಿಯ ದಾಖಲೆಯನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡುತ್ತಿದ್ದೀರಿ ಎಂಬುದನ್ನು ಆಯ್ಕೆಮಾಡಿ.",
+      "ನಂತರ ಫೈಲ್ ಅನ್ನು ಇಲ್ಲಿ ಎಳೆಯಿರಿ ಅಥವಾ ನಿಮ್ಮ ಸಾಧನದಿಂದ ಫೋಟೋ ಅಥವಾ PDF ಅನ್ನು ಆಯ್ಕೆಮಾಡಿ.",
+      "ನೀವು ಅಪ್‌ಲೋಡ್ ಮಾಡಿದ ಪ್ರತಿಯೊಂದು ದಾಖಲೆಯು ಇಲ್ಲಿದೆ.",
+      "ಎಲ್ಲವನ್ನೂ ಅಪ್‌ಲೋಡ್ ಮಾಡಿದ ನಂತರ, ಸಾರಾಂಶವನ್ನು ಪಡೆಯಲು ಈ ಬಟನ್ ಒತ್ತಿ.",
+    ],
+  },
+  ml: {
+    title: "രേഖകൾ അപ്‌ലോഡ് ചെയ്യുക", subtitle: "പഴയ പ്രിസ്ക്രിപ്ഷനുകൾ, ലാബ് റിപ്പോർട്ടുകൾ, അല്ലെങ്കിൽ ഡിസ്ചാർജ് സംഗ്രഹങ്ങൾ ചേർക്കുക.", back: "← തിരികെ",
+    docTypeLabel: "ഇത് ഏത് തരത്തിലുള്ള രേഖയാണ്?",
+    docTypes: { prescription: "പ്രിസ്ക്രിപ്ഷൻ", lab_report: "ലാബ് റിപ്പോർട്ട്", discharge_summary: "ഡിസ്ചാർജ് സംഗ്രഹം", imaging: "ഇമേജിംഗ്", other: "മറ്റുള്ളവ" },
+    dropText: "ഫയൽ ഇവിടെ വലിച്ചിടുക, അല്ലെങ്കിൽ", dropHint: "JPG, PNG, അല്ലെങ്കിൽ PDF · പരമാവധി 16 MB", browse: "ഫയലുകൾ ബ്രൗസ് ചെയ്യുക",
+    errorType: "JPG, PNG, അല്ലെങ്കിൽ PDF ഫയലുകൾ മാത്രമേ അനുവദിക്കൂ.", errorSize: "ഫയൽ വളരെ വലുതാണ് (പരമാവധി 16 MB).",
+    errorGeneric: "അപ്‌ലോഡ് പരാജയപ്പെട്ടു. ദയവായി വീണ്ടും ശ്രമിക്കുക.", uploading: "അപ്‌ലോഡ് ചെയ്യുന്നു…",
+    yourDocs: "നിങ്ങൾ അപ്‌ലോഡ് ചെയ്ത രേഖകൾ", noDocs: "രേഖകളൊന്നും ഇതുവരെ അപ്‌ലോഡ് ചെയ്തിട്ടില്ല.",
+    view: "കാണുക", deleteBtn: "ഡിലീറ്റ് ചെയ്യുക",
+    confirmDeleteTitle: "ഈ രേഖ ഡിലീറ്റ് ചെയ്യണോ?", confirmDeleteBody: "ഇത് മാറ്റാൻ കഴിയില്ല.",
+    confirmYes: "ഡിലീറ്റ് ചെയ്യുക", confirmNo: "റദ്ദാക്കുക", uploadedOn: "അപ്‌ലോഡ് ചെയ്തത്",
+    summariseAll: "എല്ലാ രേഖകളുടെയും സംഗ്രഹം കാണുക", summarising: "രേഖകൾ വായിക്കുന്നു…", rerunAll: "വീണ്ടും റൺ ചെയ്യുക",
+    needsReview: "⚠ പരിശോധന ആവശ്യമാണ്", summaryError: "ഈ രേഖ വായിക്കാൻ കഴിഞ്ഞില്ല.",
+    cachedNote: "സേവ് ചെയ്ത ഫലം — പുതിയ ടോക്കണുകൾ ഉപയോഗിച്ചിട്ടില്ല.", hideAll: "ഫലങ്ങൾ മറയ്ക്കുക", noResultYet: "ഇതുവരെ സംഗ്രഹിച്ചിട്ടില്ല.",
+    viewCombined: "സംയോജിത സംഗ്രഹം കാണുക →",
+    audioTourBtn: "🔊 ഓഡിയോ ഗൈഡ്",
+    tourPromptTitle: "നിങ്ങൾക്ക് ഓഡിയോ ഗൈഡ് വേണോ?", tourPromptBody: "ശബ്ദ വിവരണത്തോടെ ഈ പേജ് ഞങ്ങൾ വിശദീകരിച്ചു തരാം.",
+    tourYes: "അതെ, ഗൈഡ് ചെയ്യൂ", tourNo: "വേണ്ട, നന്ദി", tourPrev: "◀ തിരികെ", tourNext: "അടുത്തത് ▶", tourEnd: "ടൂർ അവസാനിപ്പിക്കുക",
+    tourSteps: [
+      "ഇവിടെയാണ് നിങ്ങളുടെ പഴയ മെഡിക്കൽ രേഖകൾ അപ്‌ലോഡ് ചെയ്യുന്നത്.",
+      "ആദ്യം, നിങ്ങൾ ഏത് തരത്തിലുള്ള രേഖയാണ് അപ്‌ലോഡ് ചെയ്യുന്നതെന്ന് തിരഞ്ഞെടുക്കുക.",
+      "തുടർന്ന് ഫയൽ ഇവിടെ വലിച്ചിടുക അല്ലെങ്കിൽ നിങ്ങളുടെ ഉപകരണത്തിൽ നിന്ന് ഫോട്ടോയോ PDF-ഓ തിരഞ്ഞെടുക്കുക.",
+      "നിങ്ങൾ അപ്‌ലോഡ് ചെയ്ത എല്ലാ രേഖകളും ഇവിടെ കാണാം.",
+      "എല്ലാം അപ്‌ലോഡ് ചെയ്ത ശേഷം, സംഗ്രഹം ലഭിക്കാൻ ഈ ബട്ടൺ അമർത്തുക.",
+    ],
+  },
+  ur: {
+    title: "دستاویزات اپ لوڈ کریں", subtitle: "پرانے نسخے، لیب رپورٹس، یا ڈسچارج کا خلاصہ شامل کریں۔", back: "← واپس",
+    docTypeLabel: "یہ کس قسم کی دستاویز ہے؟",
+    docTypes: { prescription: "نسخہ", lab_report: "لیب رپورٹ", discharge_summary: "ڈسچارج کا خلاصہ", imaging: "امیجنگ", other: "دیگر" },
+    dropText: "فائل یہاں ڈریگ کریں، یا", dropHint: "JPG, PNG, یا PDF · زیادہ سے زیادہ 16 MB", browse: "فائلیں براؤز کریں",
+    errorType: "صرف JPG, PNG, یا PDF فائلوں کی اجازت ہے۔", errorSize: "فائل بہت بڑی ہے (زیادہ سے زیادہ 16 MB)۔",
+    errorGeneric: "اپ لوڈ ناکام ہو گیا۔ براہ کرم دوبارہ کوشش کریں۔", uploading: "اپ لوڈ ہو رہا ہے…",
+    yourDocs: "آپ کی اپ لوڈ کردہ دستاویزات", noDocs: "ابھی تک کوئی دستاویز اپ لوڈ نہیں ہوئی۔",
+    view: "دیکھیں", deleteBtn: "حذف کریں",
+    confirmDeleteTitle: "کیا اس دستاویز کو حذف کریں؟", confirmDeleteBody: "اسے واپس نہیں لیا جا سکتا۔",
+    confirmYes: "حذف کریں", confirmNo: "منسوخ کریں", uploadedOn: "اپ لوڈ کیا گیا",
+    summariseAll: "تمام دستاویزات کا خلاصہ بنائیں", summarising: "دستاویزات پڑھی جا رہی ہیں…", rerunAll: "دوبارہ چلائیں",
+    needsReview: "⚠ جائزے کی ضرورت ہے", summaryError: "یہ دستاویز نہیں پڑھی جا سکی۔",
+    cachedNote: "محفوظ شدہ نتیجہ — نئے ٹوکن استعمال نہیں ہوئے۔", hideAll: "نتائج چھپائیں", noResultYet: "ابھی خلاصہ نہیں بنایا گیا۔",
+    viewCombined: "مشترکہ خلاصہ دیکھیں →",
+    audioTourBtn: "🔊 آڈیو ٹور",
+    tourPromptTitle: "کیا آپ آڈیو گائیڈ چاہتے ہیں؟", tourPromptBody: "ہم آواز کے ساتھ اس صفحے کے بارے میں آپ کی رہنمائی کر سکتے ہیں۔",
+    tourYes: "ہاں، رہنمائی کریں", tourNo: "نہیں، شکریہ", tourPrev: "◀ پیچھے", tourNext: "آگے ▶", tourEnd: "ٹور ختم کریں",
+    tourSteps: [
+      "یہاں آپ اپنی پرانی طبی دستاویزات اپ لوڈ کرتے ہیں۔",
+      "پہلے منتخب کریں کہ آپ کس قسم کی دستاویز اپ لوڈ کر رہے ہیں۔",
+      "پھر فائل یہاں ڈریگ کریں یا اپنے ڈیوائس سے فوٹو یا PDF منتخب کریں۔",
+      "آپ کی اپ لوڈ کردہ ہر دستاویز یہاں نظر آتی ہے۔",
+      "سب کچھ اپ لوڈ کرنے کے بعد، خلاصہ حاصل کرنے کے لیے یہ بٹن دبائیں۔",
+    ],
+  },
 };
 
-const FONT: Record<Lang, string> = { en: "var(--font-body)", hi: "var(--font-hi)", pa: "var(--font-pa)", ta: "var(--font-ta)", bn: "var(--font-bn)" };
-const DISPLAY_FONT: Record<Lang, string> = { en: "var(--font-display)", hi: "var(--font-hi)", pa: "var(--font-pa)", ta: "var(--font-ta)", bn: "var(--font-bn)" };
+// Map locale variants (e.g. hi-IN) to base dictionary keys
+function getTranslation(langKey: string): TranslationContent {
+  const normalized = (langKey || "en").toLowerCase().split("-")[0];
+  return DU[normalized] || DU[langKey] || DU.en;
+}
+
+const FONT: Partial<Record<string, string>> = {
+  en: "var(--font-body)", hi: "var(--font-hi)", pa: "var(--font-pa)",
+  ta: "var(--font-ta)", bn: "var(--font-bn)", te: "var(--font-te)",
+  mr: "var(--font-hi)", gu: "var(--font-gu)", kn: "var(--font-kn)",
+  ml: "var(--font-ml)", ur: "var(--font-ur)",
+};
+
+const DISPLAY_FONT: Partial<Record<string, string>> = {
+  en: "var(--font-display)", hi: "var(--font-hi)", pa: "var(--font-pa)",
+  ta: "var(--font-ta)", bn: "var(--font-bn)", te: "var(--font-te)",
+  mr: "var(--font-hi)", gu: "var(--font-gu)", kn: "var(--font-kn)",
+  ml: "var(--font-ml)", ur: "var(--font-ur)",
+};
 
 export default function DocumentUpload() {
   const { patient, ready } = useRequireAuth();
@@ -195,6 +370,7 @@ export default function DocumentUpload() {
   const [summaryError, setSummaryError] = useState("");
   const [showResults, setShowResults] = useState(false);
 
+  // ---------- Tour State ----------
   const [tourPromptOpen, setTourPromptOpen] = useState(false);
   const [tourActive, setTourActive] = useState(false);
   const [tourStep, setTourStep] = useState(0);
@@ -215,9 +391,15 @@ export default function DocumentUpload() {
     }
   }
 
+  function handleLangChange(newLang: Lang) {
+    setLang(newLang);
+    localStorage.setItem("medikiosk-lang", newLang);
+  }
+
   useEffect(() => {
     const savedLang = localStorage.getItem("medikiosk-lang") as Lang | null;
     if (savedLang) setLang(savedLang);
+    if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.getVoices();
     const dismissed = localStorage.getItem(TOUR_DISMISSED_KEY);
     if (!dismissed) setTourPromptOpen(true);
   }, []);
@@ -229,7 +411,9 @@ export default function DocumentUpload() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, patient]);
 
-  const t = DU[lang];
+  // Robust localized translation lookup
+  const t = getTranslation(lang);
+  const baseLangKey = (lang || "en").toLowerCase().split("-")[0];
 
   useEffect(() => {
     if (!tourActive) return;
@@ -244,7 +428,8 @@ export default function DocumentUpload() {
       } else {
         setSpotlight(null);
       }
-      speak(t.tourSteps[tourStep], lang);
+      const stepText = t.tourSteps[tourStep] || DU.en.tourSteps[tourStep];
+      speak(stepText, lang);
     }, el ? 450 : 50);
     return () => {
       cancelled = true;
@@ -296,7 +481,15 @@ export default function DocumentUpload() {
     setLoadingDocs(true);
     try {
       const res = await authFetch(`/api/documents/patient/${patient.patient_id}`);
-      if (res.ok) setDocs(await res.json());
+      if (res.ok) {
+        const loadedDocs = await res.json();
+        setDocs(loadedDocs);
+        if (loadedDocs.length > 0) {
+          localStorage.setItem("documents_uploaded", "true");
+        } else {
+          localStorage.removeItem("documents_uploaded");
+        }
+      }
     } catch {
       // list just stays empty; upload area still works
     } finally {
@@ -336,6 +529,7 @@ export default function DocumentUpload() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || t.errorGeneric);
       }
+      localStorage.setItem("documents_uploaded", "true");
       await loadDocs();
     } catch (e) {
       setError(e instanceof Error ? e.message : t.errorGeneric);
@@ -391,11 +585,19 @@ export default function DocumentUpload() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || t.summaryError);
       const map: Record<number, SummaryEntry> = {};
+      const summaryItems: string[] = [];
       for (const entry of data.results as SummaryEntry[]) {
         map[entry.document_id] = entry;
+        if (entry.result) {
+          summaryItems.push(`Document #${entry.document_id} (${entry.doc_type}): ${JSON.stringify(entry.result)}`);
+        }
       }
       setSummaries(map);
       setShowResults(true);
+
+      if (summaryItems.length > 0) {
+        localStorage.setItem("doc_summary", summaryItems.join("\n"));
+      }
     } catch (e) {
       setSummaryError(e instanceof Error ? e.message : t.summaryError);
     } finally {
@@ -403,8 +605,8 @@ export default function DocumentUpload() {
     }
   }
 
-  const bodyFont = { fontFamily: FONT[lang] };
-  const displayFont = { fontFamily: DISPLAY_FONT[lang] };
+  const bodyFont = { fontFamily: FONT[baseLangKey] || FONT.en };
+  const displayFont = { fontFamily: DISPLAY_FONT[baseLangKey] || DISPLAY_FONT.en };
 
   if (!ready) {
     return (
@@ -417,17 +619,41 @@ export default function DocumentUpload() {
   return (
     <main style={bodyFont} className="min-h-screen bg-[#F3ECDA] text-[#1C2420]">
       <div className="mx-auto max-w-2xl px-6 py-10">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <Link href="/patient-home" className="text-sm text-[#2F6F63] hover:underline">
             {t.back}
           </Link>
-          <button
-            onClick={startTour}
-            className="rounded-full border border-[#2F6F63]/40 px-3 py-1.5 text-xs font-medium text-[#2F6F63] hover:bg-[#2F6F63]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F6F63]"
-          >
-            {t.audioTourBtn}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Language Selector */}
+            <div className="flex items-center rounded-full border border-[#1C2420]/15 bg-white/50 p-1">
+              {Object.keys(LANGUAGES).map((key) => {
+                const k = key as Lang;
+                const langData = LANGUAGES[k] as any;
+                const displayLabel = langData?.native || langData?.label || k;
+                
+                return (
+                  <button
+                    key={k}
+                    onClick={() => handleLangChange(k)}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                      lang === k ? "bg-[#2F6F63] text-white shadow-sm" : "text-[#1C2420]/70 hover:bg-[#1C2420]/5"
+                    }`}
+                  >
+                    {displayLabel}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={startTour}
+              className="rounded-full border border-[#2F6F63]/40 px-3 py-1.5 text-xs font-medium text-[#2F6F63] hover:bg-[#2F6F63]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F6F63]"
+            >
+              {t.audioTourBtn}
+            </button>
+          </div>
         </div>
+
         <h1 style={displayFont} className="mt-4 text-2xl font-medium">{t.title}</h1>
         <p className="mt-1 text-[#1C2420]/70">{t.subtitle}</p>
 
@@ -507,7 +733,7 @@ export default function DocumentUpload() {
                   <div key={doc.document_id} className="rounded-xl border border-[#1C2420]/10 bg-white/60 px-4 py-3">
                     <div className="flex items-center justify-between gap-4">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{t.docTypes[doc.doc_type]}</p>
+                        <p className="truncate text-sm font-medium">{t.docTypes[doc.doc_type] || doc.doc_type}</p>
                         <p className="text-xs text-[#1C2420]/50">
                           {t.uploadedOn} {new Date(doc.uploaded_at).toLocaleDateString()}
                         </p>
@@ -592,7 +818,7 @@ export default function DocumentUpload() {
       {/* Tour prompt modal */}
       {tourPromptOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6">
-          <div style={bodyFont} className="w-full max-w-sm rounded-2xl bg-white p-6 text-center">
+          <div style={bodyFont} className="w-full max-w-sm rounded-2xl bg-white p-6 text-center text-[#1C2420]">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#E9A23F]/15 text-2xl text-[#E9A23F]">🔊</div>
             <h3 style={displayFont} className="mt-4 text-lg font-medium">{t.tourPromptTitle}</h3>
             <p className="mt-2 text-sm text-[#1C2420]/70">{t.tourPromptBody}</p>
@@ -632,7 +858,7 @@ export default function DocumentUpload() {
           <div className="mx-auto flex max-w-2xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#E9A23F]/20 text-[#E9A23F]">🔊</span>
-              <p className="text-sm">{t.tourSteps[tourStep]}</p>
+              <p className="text-sm">{t.tourSteps[tourStep] || DU.en.tourSteps[tourStep]}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
               <button
