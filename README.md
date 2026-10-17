@@ -484,5 +484,3 @@
 
 # MediKiosk is a hackathon prototype. It is not a medical device, it does not diagnose, and it should not be used with real patient data in its current state.
 
-# 
-
